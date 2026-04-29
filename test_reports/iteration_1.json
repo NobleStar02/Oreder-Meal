@@ -1,0 +1,45 @@
+{
+  "summary": "Comprehensive testing of Doyuran Güveç B2B lunch ordering app (FastAPI + React + MongoDB). Backend: 31/31 pytest cases pass covering auth, RBAC, menu CRUD, upload (real Emergent object storage), orders lifecycle, status updates, role-scoped access, and analytics. Frontend: Landing, login, register, admin (dashboard/menu/orders/analytics) and company (menu/orders) flows verified end-to-end through the public REACT_APP_BACKEND_URL. Turkish copy renders correctly with the warm terracotta/cream theme.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminDashboard (/admin)", "issue": "'BUGÜN SIPARIŞ' counter shows 0 and '7 GÜNLÜK SIPARIŞ' shows '—' even though /api/admin/orders?date=today returns 2 orders and analytics summary returns total_orders=2. Other tiles (BUGÜN CIRO ₺0,00) similarly stay at zero. Likely the dashboard is mis-filtering (e.g., only counting status='yeni') or not awaiting the API response correctly. Inconsistent with the Orders & Analytics pages.", "selector": "[data-testid] on dashboard tiles", "priority": "MEDIUM"},
+      {"component": "AdminAnalytics charts (Recharts)", "issue": "Console warnings: 'The width(-1) and height(-1) of chart should be greater than 0'. ResponsiveContainer is rendering before its parent has a size (initial render). Charts still display once layout settles, but warnings indicate missing minWidth/minHeight or aspect — minor.", "selector": ".recharts-responsive-container", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Landing/Menu/Admin", "issues": ["Visual design is consistent and on-brand: terracotta primary, cream background, Turkish copy is correct everywhere reviewed. No contrast or alignment issues spotted on tested screens."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Investigate AdminDashboard 'BUGÜN SIPARIŞ' / 'BUGÜN CIRO' / '7 GÜNLÜK SIPARIŞ' tiles showing zero/dash while real data exists for today and last 7 days. Likely API call missing or filtering only status='yeni'.",
+    "Optionally suppress Recharts warnings by giving ResponsiveContainer a fixed minHeight or aspect ratio."
+  ],
+  "critical_code_review_comments": [
+    "server.py keeps EMERGENT_LLM_KEY required at import time but it's only used for object storage init — fine.",
+    "JWT secret hardcoded in /app/backend/.env (acceptable for preview, but rotate before prod).",
+    "CORS uses allow_origins=['*'] together with allow_credentials=True AND allow_origin_regex='.*' — Starlette will fall back to allow_origin_regex which lets credentialed cookies work cross-origin in this preview. Browsers tolerate this but it is non-standard; consider explicit origins for production.",
+    "set_auth_cookies uses samesite='none', secure=True — correct for HTTPS preview, would not work on plain HTTP.",
+    "Order count_documents-based 'order_no' generation is racy under concurrent inserts; acceptable for single-tenant lunch volume but worth noting.",
+    "/api/files/{path:path} re-fetches the file from storage each request (no caching) — acceptable, fine.",
+    "ADMIN_PASSWORD is auto-rotated in DB on every startup if it differs — matches playbook, good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/__init__.py",
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (31/31)", "frontend": "~95% (all tested flows passed; one dashboard data-binding issue noted)"},
+  "test_credentials": "Admin: admin@doyuranguvec.com / DoyuranAdmin2026! (seeded). Test companies are auto-registered per run (test_firma_<run_id>@example.com / Firma2026!).",
+  "seed_data_creation": "Tests create TEST_-prefixed menu items and TEST_Firma_<run_id> companies. Menu items are deleted on teardown; user records remain (no delete-user API).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/backend_test.py -v --junitxml=/app/test_reports/pytest/pytest_results.xml`. Each run creates fresh TEST_ users so no cleanup conflicts. Today's UTC date drives /menu/today; if menu is empty seed via admin POST /api/admin/menu with available_date=today_iso(). Frontend uses httpOnly cookies + withCredentials; for Playwright, login through the real API/UI to obtain cookies (don't try to inject Bearer tokens — frontend axios doesn't read localStorage).",
+  "rca_of_the_issue": "AdminDashboard zero counters: most likely the dashboard component either (a) only counts orders where status==='yeni' for the BUGÜN SIPARIŞ tile (instead of all orders for order_date===today), or (b) computes totals client-side from a filtered list. Recommend checking /app/frontend/src/pages/admin/AdminDashboard.jsx for the data source — should call /api/admin/orders?date=today and /api/admin/analytics/summary?days=7 then sum total/count without filtering on status."
+}
