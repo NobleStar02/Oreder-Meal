@@ -9,13 +9,12 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
-    Promise.all([
-      api.get("/admin/analytics/summary?days=7"),
-      api.get(`/admin/orders?date=${today}`),
-    ]).then(([a, b]) => {
-      setSummary(a.data);
-      setTodayOrders(b.data);
-    });
+    api.get("/admin/analytics/summary?days=7")
+      .then((r) => setSummary(r.data))
+      .catch(() => setSummary({ total_orders: 0, total_revenue: 0, daily: [], top_items: [], top_companies: [] }));
+    api.get(`/admin/orders?date=${today}`)
+      .then((r) => setTodayOrders(r.data))
+      .catch(() => setTodayOrders([]));
   }, []);
 
   const todayRevenue = todayOrders.filter(o => o.status !== "iptal").reduce((s, o) => s + o.total, 0);

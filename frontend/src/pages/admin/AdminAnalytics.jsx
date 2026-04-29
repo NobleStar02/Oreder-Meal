@@ -41,8 +41,8 @@ export default function AdminAnalytics() {
         <div className="bg-white rounded-2xl border border-[#E5DFD3] p-6">
           <div className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580]">Günlük Ciro Trendi</div>
           <div className="font-heading text-2xl font-bold mt-1 mb-5">Son {days} gün</div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+          <div style={{ width: "100%", height: 256 }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
               <LineChart data={data?.daily ?? []}>
                 <CartesianGrid stroke="#E5DFD3" strokeDasharray="3 3" />
                 <XAxis dataKey="date" stroke="#8A8580" fontSize={11} />
@@ -60,8 +60,8 @@ export default function AdminAnalytics() {
         <div className="bg-white rounded-2xl border border-[#E5DFD3] p-6">
           <div className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580]">En Çok Sipariş Edilen Yemekler</div>
           <div className="font-heading text-2xl font-bold mt-1 mb-5">İlk 10</div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+          <div style={{ width: "100%", height: 256 }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
               <BarChart data={data?.top_items ?? []} layout="vertical" margin={{ left: 80 }}>
                 <CartesianGrid stroke="#E5DFD3" strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" stroke="#8A8580" fontSize={11} />
