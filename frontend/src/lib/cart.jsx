@@ -27,6 +27,7 @@ export function CartProvider({ children }) {
         id: menuItem.id,
         name: menuItem.name,
         price: menuItem.price,
+        category: menuItem.category || "Ana Yemek",
         image_path: menuItem.image_path,
         quantity: qty,
       }];

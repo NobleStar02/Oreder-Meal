@@ -143,10 +143,18 @@ class UserOut(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
 
+CATEGORY_ORDER = ["Çorba", "Ana Yemek", "Yan Yemek", "İçecek", "Tatlı"]
+
+def _category_rank(cat: str) -> int:
+    try:
+        return CATEGORY_ORDER.index(cat)
+    except ValueError:
+        return 999
+
 class MenuItemIn(BaseModel):
     name: str
     description: Optional[str] = ""
-    price: float
+    price: float = 0.0
     image_path: Optional[str] = None
     category: Optional[str] = "Ana Yemek"
     available: bool = True
@@ -265,6 +273,7 @@ async def menu_today():
         {"available": True, "available_date": today},
         {"_id": 0}
     ).to_list(200)
+    items.sort(key=lambda x: (_category_rank(x.get("category", "")), x.get("created_at", "")))
     return items
 
 @api_router.get("/admin/menu")
@@ -272,7 +281,8 @@ async def admin_list_menu(date: Optional[str] = None, user: dict = Depends(requi
     query = {}
     if date:
         query["available_date"] = date
-    items = await db.menu_items.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    items = await db.menu_items.find(query, {"_id": 0}).to_list(500)
+    items.sort(key=lambda x: (_category_rank(x.get("category", "")), x.get("created_at", "")))
     return items
 
 @api_router.post("/admin/menu")
@@ -328,15 +338,19 @@ async def place_order(payload: OrderIn, user: dict = Depends(get_current_user)):
         m = menu_map.get(it.menu_item_id)
         if not m:
             raise HTTPException(status_code=400, detail=f"Yemek bulunamadı: {it.menu_item_id}")
-        line_total = m["price"] * it.quantity
+        line_total = m.get("price", 0) * it.quantity
         order_items.append({
             "menu_item_id": m["id"],
             "name": m["name"],
-            "price": m["price"],
+            "price": m.get("price", 0),
+            "category": m.get("category", "Ana Yemek"),
             "quantity": it.quantity,
             "line_total": line_total,
         })
         total += line_total
+
+    # Sort items by category order
+    order_items.sort(key=lambda x: _category_rank(x.get("category", "")))
 
     # Generate sequential daily order number
     today = today_iso()

@@ -44,3 +44,19 @@ export function fileUrl(path) {
   if (!path) return null;
   return `${API}/files/${path}`;
 }
+
+export const CATEGORY_ORDER = ["Çorba", "Ana Yemek", "Yan Yemek", "İçecek", "Tatlı"];
+
+export function categoryRank(cat) {
+  const i = CATEGORY_ORDER.indexOf(cat);
+  return i === -1 ? 999 : i;
+}
+
+export function sortByCategory(arr) {
+  return [...arr].sort((a, b) => {
+    const ra = categoryRank(a.category);
+    const rb = categoryRank(b.category);
+    if (ra !== rb) return ra - rb;
+    return (a.created_at || "").localeCompare(b.created_at || "");
+  });
+}

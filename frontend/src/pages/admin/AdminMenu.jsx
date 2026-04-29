@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { api, fileUrl, formatTRY, formatApiErrorDetail } from "../../lib/api";
+import { api, fileUrl, formatApiErrorDetail } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import { Switch } from "../../components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../../components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Upload, Utensils } from "lucide-react";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-const empty = { name: "", description: "", price: "", category: "Ana Yemek", available: true, image_path: null, available_date: todayISO() };
+const CATEGORIES = ["Çorba", "Ana Yemek", "Yan Yemek", "İçecek", "Tatlı"];
+
+const empty = { name: "", description: "", category: "Ana Yemek", available: true, image_path: null, available_date: todayISO() };
 
 export default function AdminMenu() {
   const [date, setDate] = useState(todayISO());
@@ -30,7 +33,18 @@ export default function AdminMenu() {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [date]);
 
   const openNew = () => { setEditing(null); setForm({ ...empty, available_date: date }); setOpen(true); };
-  const openEdit = (it) => { setEditing(it); setForm({ ...it, price: String(it.price) }); setOpen(true); };
+  const openEdit = (it) => {
+    setEditing(it);
+    setForm({
+      name: it.name || "",
+      description: it.description || "",
+      category: CATEGORIES.includes(it.category) ? it.category : "Ana Yemek",
+      available: it.available !== false,
+      image_path: it.image_path || null,
+      available_date: it.available_date || todayISO(),
+    });
+    setOpen(true);
+  };
 
   const onUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -55,7 +69,6 @@ export default function AdminMenu() {
       const payload = {
         name: form.name,
         description: form.description,
-        price: parseFloat(form.price),
         category: form.category,
         available: form.available,
         image_path: form.image_path,
@@ -124,9 +137,9 @@ export default function AdminMenu() {
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-[#2C2A29] truncate">{it.name}</div>
-                  <div className="text-sm text-[#8A8580] truncate">{it.category} · {it.description || "—"}</div>
+                  <div className="text-sm text-[#8A8580] truncate">{it.description || "—"}</div>
                 </div>
-                <div className="hidden sm:block font-heading font-bold text-[#C05A46]">{formatTRY(it.price)}</div>
+                <span className="hidden sm:inline-block text-[10px] uppercase tracking-[0.2em] font-bold text-[#C05A46] bg-[#C05A46]/10 px-2.5 py-1 rounded-full">{it.category}</span>
                 <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${it.available ? "bg-[#4A5D23]/15 text-[#3A4A1A]" : "bg-[#8A8580]/15 text-[#5C5855]"}`}>
                   {it.available ? "Aktif" : "Pasif"}
                 </span>
@@ -165,15 +178,18 @@ export default function AdminMenu() {
               <Label htmlFor="name">İsim *</Label>
               <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 rounded-lg border-[#E5DFD3]" data-testid="admin-menu-name-input" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="price">Fiyat (₺) *</Label>
-                <Input id="price" type="number" step="0.5" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="mt-1 rounded-lg border-[#E5DFD3]" data-testid="admin-menu-price-input" />
-              </div>
-              <div>
-                <Label htmlFor="category">Kategori</Label>
-                <Input id="category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 rounded-lg border-[#E5DFD3]" placeholder="Ana Yemek, Çorba…" data-testid="admin-menu-category-input" />
-              </div>
+            <div>
+              <Label htmlFor="category">Kategori *</Label>
+              <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
+                <SelectTrigger id="category" className="mt-1 rounded-lg border-[#E5DFD3] h-11" data-testid="admin-menu-category-select">
+                  <SelectValue placeholder="Kategori seçin" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c} data-testid={`admin-menu-category-option-${c}`}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label htmlFor="desc">Açıklama</Label>
@@ -192,7 +208,7 @@ export default function AdminMenu() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} className="rounded-full border-[#E5DFD3]">Vazgeç</Button>
-            <Button onClick={save} disabled={!form.name || !form.price} className="bg-[#C05A46] hover:bg-[#A64A38] text-white rounded-full" data-testid="admin-menu-save-button">
+            <Button onClick={save} disabled={!form.name || !form.category} className="bg-[#C05A46] hover:bg-[#A64A38] text-white rounded-full" data-testid="admin-menu-save-button">
               {editing ? "Güncelle" : "Ekle"}
             </Button>
           </DialogFooter>

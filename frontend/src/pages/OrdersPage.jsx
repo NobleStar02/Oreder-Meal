@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, formatTRY, formatDateTR, formatTimeTR } from "../lib/api";
+import { api, formatDateTR, formatTimeTR, CATEGORY_ORDER, categoryRank } from "../lib/api";
 import NavBar from "../components/NavBar";
 import { Badge } from "../components/ui/badge";
 import { Printer, ChevronDown, ChevronUp, Clock } from "lucide-react";
@@ -51,7 +51,6 @@ export default function OrdersPage() {
                       <div className="font-semibold text-[#2C2A29]">{formatDateTR(o.created_at)} · {formatTimeTR(o.created_at)}</div>
                       <div className="text-sm text-[#8A8580]">{o.items.length} kalem · {o.items.reduce((s, i) => s + i.quantity, 0)} adet</div>
                     </div>
-                    <div className="hidden sm:block font-heading text-xl font-bold text-[#2C2A29]">{formatTRY(o.total)}</div>
                     <Badge className={`border ${st.cls} rounded-full px-3 py-1 font-semibold`}>{st.label}</Badge>
                     {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                   </button>
@@ -59,18 +58,8 @@ export default function OrdersPage() {
                     <div className="border-t border-[#E5DFD3] p-5 bg-[#F9F6F0]/40">
                       <div className="grid sm:grid-cols-2 gap-6">
                         <div>
-                          <div className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580] mb-2">Kalemler</div>
-                          <ul className="space-y-2">
-                            {o.items.map((it, i) => (
-                              <li key={i} className="flex justify-between text-sm">
-                                <span>{it.name} <span className="text-[#8A8580]">× {it.quantity}</span></span>
-                                <span className="font-semibold">{formatTRY(it.line_total)}</span>
-                              </li>
-                            ))}
-                          </ul>
-                          <div className="mt-3 pt-3 border-t border-[#E5DFD3] flex justify-between font-semibold">
-                            <span>Toplam</span><span>{formatTRY(o.total)}</span>
-                          </div>
+                          <div className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580] mb-2">Sipariş Detayı</div>
+                          <CategorizedItemList items={o.items} />
                         </div>
                         <div>
                           {o.note && (
@@ -92,6 +81,31 @@ export default function OrdersPage() {
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+function CategorizedItemList({ items }) {
+  const groups = CATEGORY_ORDER
+    .map((cat) => ({ cat, items: items.filter((i) => (i.category || "Ana Yemek") === cat) }))
+    .filter((g) => g.items.length > 0);
+  const others = items.filter((i) => categoryRank(i.category || "Ana Yemek") === 999);
+  if (others.length) groups.push({ cat: "Diğer", items: others });
+  return (
+    <div className="space-y-3">
+      {groups.map(({ cat, items: catItems }) => (
+        <div key={cat}>
+          <div className="text-[10px] uppercase tracking-[0.25em] font-bold text-[#C05A46] mb-1.5">{cat}</div>
+          <ul className="space-y-1">
+            {catItems.map((it, i) => (
+              <li key={i} className="flex justify-between text-sm">
+                <span>{it.name}</span>
+                <span className="text-[#8A8580]">× {it.quantity}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }

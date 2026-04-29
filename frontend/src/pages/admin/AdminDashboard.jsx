@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, formatTRY, formatTimeTR } from "../../lib/api";
-import { ArrowUpRight, Utensils, ListOrdered, BarChart3, Package } from "lucide-react";
+import { api, formatTimeTR } from "../../lib/api";
+import { ArrowUpRight, Utensils, ListOrdered, Package, CalendarDays } from "lucide-react";
 
 export default function AdminDashboard() {
   const [summary, setSummary] = useState(null);
@@ -17,8 +17,10 @@ export default function AdminDashboard() {
       .catch(() => setTodayOrders([]));
   }, []);
 
-  const todayRevenue = todayOrders.filter(o => o.status !== "iptal").reduce((s, o) => s + o.total, 0);
   const newCount = todayOrders.filter(o => o.status === "yeni").length;
+  const totalDishesToday = todayOrders
+    .filter((o) => o.status !== "iptal")
+    .reduce((s, o) => s + o.items.reduce((ss, i) => ss + i.quantity, 0), 0);
 
   return (
     <div className="space-y-8">
@@ -30,8 +32,8 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat label="Bugün Sipariş" value={todayOrders.length} icon={<ListOrdered size={18} />} />
         <Stat label="Yeni / Bekleyen" value={newCount} icon={<Package size={18} />} accent />
-        <Stat label="Bugün Ciro" value={formatTRY(todayRevenue)} icon={<BarChart3 size={18} />} />
-        <Stat label="7 Günlük Sipariş" value={summary?.total_orders ?? "—"} icon={<Utensils size={18} />} />
+        <Stat label="Bugün Toplam Adet" value={totalDishesToday} icon={<Utensils size={18} />} />
+        <Stat label="7 Günlük Sipariş" value={summary?.total_orders ?? "—"} icon={<CalendarDays size={18} />} />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
@@ -49,16 +51,22 @@ export default function AdminDashboard() {
             <div className="mt-6 text-[#8A8580] text-sm">Bugün henüz sipariş yok.</div>
           ) : (
             <ul className="mt-5 divide-y divide-[#E5DFD3]">
-              {todayOrders.slice(0, 8).map((o) => (
-                <li key={o.id} className="py-3 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#C05A46]/10 grid place-items-center font-mono font-bold text-[#C05A46] text-xs">#{o.order_no}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-[#2C2A29] truncate">{o.company_name}</div>
-                    <div className="text-xs text-[#8A8580]">{formatTimeTR(o.created_at)} · {o.items.length} kalem</div>
-                  </div>
-                  <div className="font-heading font-bold text-[#2C2A29]">{formatTRY(o.total)}</div>
-                </li>
-              ))}
+              {todayOrders.slice(0, 8).map((o) => {
+                const qty = o.items.reduce((s, i) => s + i.quantity, 0);
+                return (
+                  <li key={o.id} className="py-3 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#C05A46]/10 grid place-items-center font-mono font-bold text-[#C05A46] text-xs">#{o.order_no}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-[#2C2A29] truncate">{o.company_name}</div>
+                      <div className="text-xs text-[#8A8580]">{formatTimeTR(o.created_at)} · {o.items.length} kalem</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-heading font-bold text-[#2C2A29]">{qty}</div>
+                      <div className="text-[10px] uppercase tracking-[0.15em] text-[#8A8580]">adet</div>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

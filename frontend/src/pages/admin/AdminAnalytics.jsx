@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, formatTRY } from "../../lib/api";
+import { api } from "../../lib/api";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from "recharts";
 
 export default function AdminAnalytics() {
@@ -9,6 +9,8 @@ export default function AdminAnalytics() {
   useEffect(() => {
     api.get(`/admin/analytics/summary?days=${days}`).then((r) => setData(r.data));
   }, [days]);
+
+  const totalDishes = data?.top_items?.reduce((s, i) => s + (i.quantity || 0), 0) ?? 0;
 
   return (
     <div className="space-y-8">
@@ -33,25 +35,25 @@ export default function AdminAnalytics() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Stat label="Toplam Sipariş" value={data?.total_orders ?? "—"} />
-        <Stat label="Toplam Ciro" value={data ? formatTRY(data.total_revenue) : "—"} />
-        <Stat label="Ortalama Sipariş" value={data && data.total_orders ? formatTRY(data.total_revenue / data.total_orders) : "—"} />
+        <Stat label="Toplam Yemek Adedi" value={data ? totalDishes : "—"} />
+        <Stat label="Aktif Gün Sayısı" value={data?.daily?.length ?? "—"} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-[#E5DFD3] p-6">
-          <div className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580]">Günlük Ciro Trendi</div>
+          <div className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580]">Günlük Sipariş Trendi</div>
           <div className="font-heading text-2xl font-bold mt-1 mb-5">Son {days} gün</div>
           <div style={{ width: "100%", height: 256 }}>
             <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
               <LineChart data={data?.daily ?? []}>
                 <CartesianGrid stroke="#E5DFD3" strokeDasharray="3 3" />
                 <XAxis dataKey="date" stroke="#8A8580" fontSize={11} />
-                <YAxis stroke="#8A8580" fontSize={11} />
+                <YAxis stroke="#8A8580" fontSize={11} allowDecimals={false} />
                 <Tooltip
                   contentStyle={{ background: "white", border: "1px solid #E5DFD3", borderRadius: 12 }}
-                  formatter={(v) => formatTRY(v)}
+                  formatter={(v) => [`${v} sipariş`, "Sipariş"]}
                 />
-                <Line type="monotone" dataKey="revenue" stroke="#C05A46" strokeWidth={2.5} dot={{ fill: "#C05A46", r: 4 }} />
+                <Line type="monotone" dataKey="orders" stroke="#C05A46" strokeWidth={2.5} dot={{ fill: "#C05A46", r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -64,9 +66,9 @@ export default function AdminAnalytics() {
             <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
               <BarChart data={data?.top_items ?? []} layout="vertical" margin={{ left: 80 }}>
                 <CartesianGrid stroke="#E5DFD3" strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" stroke="#8A8580" fontSize={11} />
+                <XAxis type="number" stroke="#8A8580" fontSize={11} allowDecimals={false} />
                 <YAxis type="category" dataKey="name" stroke="#8A8580" fontSize={11} width={100} />
-                <Tooltip contentStyle={{ background: "white", border: "1px solid #E5DFD3", borderRadius: 12 }} />
+                <Tooltip contentStyle={{ background: "white", border: "1px solid #E5DFD3", borderRadius: 12 }} formatter={(v) => [`${v} adet`, "Adet"]} />
                 <Bar dataKey="quantity" fill="#C05A46" radius={[0, 8, 8, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -83,8 +85,7 @@ export default function AdminAnalytics() {
               <tr className="text-left text-xs uppercase tracking-[0.15em] text-[#8A8580] border-b border-[#E5DFD3]">
                 <th className="py-2.5 font-bold">#</th>
                 <th className="py-2.5 font-bold">Firma</th>
-                <th className="py-2.5 font-bold text-right">Sipariş</th>
-                <th className="py-2.5 font-bold text-right">Ciro</th>
+                <th className="py-2.5 font-bold text-right">Sipariş Sayısı</th>
               </tr>
             </thead>
             <tbody>
@@ -92,12 +93,11 @@ export default function AdminAnalytics() {
                 <tr key={c.name} className="border-b border-dashed border-[#E5DFD3]">
                   <td className="py-3 font-mono text-[#8A8580]">{i + 1}</td>
                   <td className="py-3 font-semibold">{c.name}</td>
-                  <td className="py-3 text-right">{c.orders}</td>
-                  <td className="py-3 text-right font-bold text-[#C05A46]">{formatTRY(c.revenue)}</td>
+                  <td className="py-3 text-right font-bold text-[#C05A46]">{c.orders}</td>
                 </tr>
               ))}
               {!data?.top_companies?.length && (
-                <tr><td colSpan={4} className="py-6 text-center text-[#8A8580]">Henüz veri yok.</td></tr>
+                <tr><td colSpan={3} className="py-6 text-center text-[#8A8580]">Henüz veri yok.</td></tr>
               )}
             </tbody>
           </table>

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { api, formatTRY, formatTimeTR, formatApiErrorDetail } from "../../lib/api";
+import { api, formatTimeTR, formatApiErrorDetail, CATEGORY_ORDER, categoryRank } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -104,19 +104,14 @@ export default function AdminOrders() {
                     {o.address && <div className="text-xs text-[#8A8580] mt-0.5">{o.address}</div>}
                   </div>
                   <div className="text-right">
-                    <div className="font-heading text-2xl font-bold text-[#2C2A29]">{formatTRY(o.total)}</div>
-                    <div className="text-xs text-[#8A8580]">{o.items.reduce((s, i) => s + i.quantity, 0)} adet</div>
+                    <div className="font-heading text-2xl font-bold text-[#2C2A29]">{o.items.reduce((s, i) => s + i.quantity, 0)}</div>
+                    <div className="text-xs text-[#8A8580] uppercase tracking-[0.15em]">adet</div>
                   </div>
                 </div>
 
-                <ul className="mt-4 grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
-                  {o.items.map((it, i) => (
-                    <li key={i} className="flex justify-between border-b border-dashed border-[#E5DFD3] py-1.5">
-                      <span>{it.name} <span className="text-[#8A8580]">× {it.quantity}</span></span>
-                      <span className="font-semibold">{formatTRY(it.line_total)}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="mt-4">
+                  <CategorizedAdminItems items={o.items} />
+                </div>
 
                 {o.note && (
                   <div className="mt-3 bg-[#F2EBE3] rounded-lg px-3 py-2 text-sm text-[#2C2A29]">
@@ -149,6 +144,31 @@ export default function AdminOrders() {
           })
         )}
       </div>
+    </div>
+  );
+}
+
+function CategorizedAdminItems({ items }) {
+  const groups = CATEGORY_ORDER
+    .map((cat) => ({ cat, items: items.filter((i) => (i.category || "Ana Yemek") === cat) }))
+    .filter((g) => g.items.length > 0);
+  const others = items.filter((i) => categoryRank(i.category || "Ana Yemek") === 999);
+  if (others.length) groups.push({ cat: "Diğer", items: others });
+  return (
+    <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
+      {groups.map(({ cat, items: catItems }) => (
+        <div key={cat}>
+          <div className="text-[10px] uppercase tracking-[0.25em] font-bold text-[#C05A46] mb-1.5">{cat}</div>
+          <ul>
+            {catItems.map((it, i) => (
+              <li key={i} className="flex justify-between text-sm border-b border-dashed border-[#E5DFD3] py-1.5">
+                <span>{it.name}</span>
+                <span className="font-bold text-[#2C2A29]">× {it.quantity}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }

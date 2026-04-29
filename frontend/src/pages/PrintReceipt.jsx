@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, formatTRY, formatDateTR, formatTimeTR } from "../lib/api";
+import { api, formatDateTR, formatTimeTR, CATEGORY_ORDER, categoryRank } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Printer, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
+
+function groupByCategory(items) {
+  const groups = CATEGORY_ORDER
+    .map((cat) => ({ cat, items: items.filter((i) => (i.category || "Ana Yemek") === cat) }))
+    .filter((g) => g.items.length > 0);
+  const others = items.filter((i) => categoryRank(i.category || "Ana Yemek") === 999);
+  if (others.length) groups.push({ cat: "Diğer", items: others });
+  return groups;
+}
 
 export default function PrintReceipt() {
   const { orderId } = useParams();
@@ -18,6 +27,9 @@ export default function PrintReceipt() {
 
   if (loading) return <div className="min-h-screen grid place-items-center text-[#8A8580]">Yükleniyor…</div>;
   if (!order) return <div className="min-h-screen grid place-items-center text-[#B93A32]">Sipariş bulunamadı</div>;
+
+  const groups = groupByCategory(order.items);
+  const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
 
   return (
     <div className="min-h-screen bg-[#F2EBE3] flex flex-col items-center py-8 px-4">
@@ -48,36 +60,35 @@ export default function PrintReceipt() {
 
         <div style={{ borderTop: "1px dashed black", margin: "6px 0" }} />
 
-        <div style={{ fontWeight: "bold", fontSize: 12 }}>{order.company_name}</div>
+        <div style={{ fontWeight: "bold", fontSize: 13 }}>{order.company_name}</div>
         {order.contact_name && <div style={{ fontSize: 11 }}>{order.contact_name}</div>}
         {order.phone && <div style={{ fontSize: 11 }}>Tel: {order.phone}</div>}
         {order.address && <div style={{ fontSize: 11 }}>{order.address}</div>}
 
         <div style={{ borderTop: "1px dashed black", margin: "6px 0" }} />
 
-        <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid black" }}>
-              <th style={{ textAlign: "left", padding: "2px 0" }}>Yemek</th>
-              <th style={{ textAlign: "center", padding: "2px 0" }}>Adet</th>
-              <th style={{ textAlign: "right", padding: "2px 0" }}>Tutar</th>
-            </tr>
-          </thead>
-          <tbody>
-            {order.items.map((it, i) => (
-              <tr key={i}>
-                <td style={{ padding: "3px 0" }}>{it.name}</td>
-                <td style={{ textAlign: "center" }}>{it.quantity}</td>
-                <td style={{ textAlign: "right" }}>{formatTRY(it.line_total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {groups.map(({ cat, items }) => (
+          <div key={cat} style={{ marginBottom: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: "1px solid black", paddingBottom: 2, marginBottom: 2 }}>
+              {cat}
+            </div>
+            <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+              <tbody>
+                {items.map((it, i) => (
+                  <tr key={i}>
+                    <td style={{ padding: "2px 0" }}>{it.name}</td>
+                    <td style={{ textAlign: "right", padding: "2px 0", fontWeight: "bold", whiteSpace: "nowrap" }}>× {it.quantity}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
 
         <div style={{ borderTop: "1px dashed black", margin: "6px 0" }} />
 
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: "bold" }}>
-          <span>TOPLAM</span><span>{formatTRY(order.total)}</span>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: "bold" }}>
+          <span>TOPLAM ADET</span><span>{totalQty}</span>
         </div>
 
         {order.note && (
