@@ -1,0 +1,135 @@
+{
+  "theme": {
+    "mode": "light",
+    "archetype": "1 (Organic & Earthy)",
+    "description": "Warm, trustworthy, and efficient. Since it's a B2B food ordering app for daily lunches, it needs to balance appetizing food presentation with fast, frictionless operations. The tone is traditional Turkish casserole (güveç) meets modern SaaS.",
+    "colors": {
+      "background": {
+        "primary": "#F9F6F0",
+        "secondary": "#FFFFFF",
+        "tertiary": "#F2EBE3",
+        "admin_bg": "#F5F3EC"
+      },
+      "text": {
+        "primary": "#2C2A29",
+        "secondary": "#5C5855",
+        "muted": "#8A8580",
+        "inverse": "#FFFFFF"
+      },
+      "brand": {
+        "primary": "#C05A46",
+        "primary_hover": "#A64A38",
+        "secondary": "#E29578"
+      },
+      "status": {
+        "success": "#4A5D23",
+        "warning": "#E8AA42",
+        "error": "#B93A32",
+        "info": "#4A7C9D"
+      },
+      "border": {
+        "default": "#E5DFD3",
+        "focus": "#C05A46"
+      }
+    }
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Cabinet Grotesk",
+      "body": "Manrope",
+      "mono": "JetBrains Mono"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl tracking-tight font-bold",
+      "h2": "text-2xl sm:text-3xl tracking-tight font-semibold",
+      "h3": "text-xl sm:text-2xl font-semibold",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm leading-normal",
+      "overline": "text-xs tracking-[0.2em] uppercase font-bold text-muted"
+    }
+  },
+  "layout_and_spacing": {
+    "general": {
+      "container_padding": "p-6 md:p-8 lg:p-12",
+      "border_radius": "rounded-2xl",
+      "border_radius_small": "rounded-lg"
+    },
+    "grids": {
+      "menu_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8",
+      "admin_dashboard_grid": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"
+    },
+    "thermal_printer_view": {
+      "width": "max-w-[300px] mx-auto",
+      "typography": "font-mono text-black bg-white",
+      "spacing": "p-4",
+      "border": "border-none",
+      "note": "The print view MUST be purely black and white, no gradients, no borders. Optimize for 80mm thermal paper."
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#C05A46] text-white hover:bg-[#A64A38] rounded-full px-6 py-3 font-semibold transition-colors shadow-sm",
+      "secondary": "bg-transparent border-2 border-[#E5DFD3] text-[#2C2A29] hover:border-[#C05A46] hover:text-[#C05A46] rounded-full px-6 py-3 font-semibold transition-colors",
+      "ghost": "bg-transparent text-[#5C5855] hover:text-[#2C2A29] hover:bg-[#F2EBE3] rounded-full px-4 py-2 transition-colors"
+    },
+    "cards": {
+      "menu_item": "bg-white rounded-2xl overflow-hidden border border-[#E5DFD3] shadow-sm hover:shadow-md transition-shadow flex flex-col",
+      "admin_widget": "bg-white rounded-2xl p-6 border border-[#E5DFD3] shadow-sm flex flex-col"
+    },
+    "inputs": {
+      "default": "bg-white border border-[#E5DFD3] rounded-lg px-4 py-3 text-base text-[#2C2A29] focus:outline-none focus:ring-2 focus:ring-[#C05A46]/20 focus:border-[#C05A46] transition-all"
+    },
+    "navigation": {
+      "header": "sticky top-0 z-50 bg-[#F9F6F0]/80 backdrop-blur-xl border-b border-[#E5DFD3]/50"
+    }
+  },
+  "media": {
+    "image_urls": [
+      {
+        "category": "hero_background",
+        "url": "https://images.pexels.com/photos/6161666/pexels-photo-6161666.jpeg",
+        "description": "Hot dishes in big bowls, setting the scene for a warm, bustling lunch service."
+      },
+      {
+        "category": "menu_placeholder_1",
+        "url": "https://images.unsplash.com/photo-1645453014403-4ad5170a386c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODl8MHwxfHNlYXJjaHw0fHxjYXNzZXJvbGUlMjBkaXNofGVufDB8fHx8MTc3NzQzMjA0OXww&ixlib=rb-4.1.0&q=85",
+        "description": "A fresh casserole dish with cheese and parsley, perfect for a daily special."
+      },
+      {
+        "category": "menu_placeholder_2",
+        "url": "https://images.pexels.com/photos/4198421/pexels-photo-4198421.jpeg",
+        "description": "Vibrant vegetable casserole for vegetarian menu options."
+      },
+      {
+        "category": "menu_placeholder_3",
+        "url": "https://images.pexels.com/photos/32125954/pexels-photo-32125954.jpeg",
+        "description": "Cheesy vegetable casserole, appetizing hot dish."
+      },
+      {
+        "category": "login_background",
+        "url": "https://images.unsplash.com/photo-1708212296033-ba8d14bb0209?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODl8MHwxfHNlYXJjaHwyfHx0dXJraXNoJTIwZm9vZCUyMHJlc3RhdXJhbnR8ZW58MHx8fHwxNzc3NDMyMDQ4fDA&ixlib=rb-4.1.0&q=85",
+        "description": "A rustic pot of food, creating a warm, organic backdrop for the company login screen."
+      }
+    ]
+  },
+  "animations_and_interactions": {
+    "hover_states": "All interactive elements must change color/background on hover. Menu cards should slightly lift (-translate-y-1) with a soft shadow.",
+    "transitions": "Use 'transition-all duration-200 ease-in-out' for standard interactions.",
+    "page_load": "Staggered fade-in for the daily menu grid. Smooth entry for admin widgets."
+  },
+  "accessibility_and_testing": {
+    "contrast": "Ensure all text meets WCAG AA standards. The terracotta primary color must have white text.",
+    "testing_attributes": "All buttons, inputs, cart items, and navigation links MUST have a descriptive 'data-testid' attribute (e.g., data-testid='add-to-cart-button', data-testid='login-email-input').",
+    "focus_states": "Maintain visible focus rings on all interactive elements for keyboard navigation."
+  },
+  "instructions_to_main_agent": [
+    "Build the application using React, Tailwind CSS, and Shadcn UI.",
+    "For the customer-facing side, prioritize a mouth-watering visual presentation. Use generous padding, rounded corners, and the specified earthy color palette.",
+    "The daily menu ordering must be completely frictionless—users need to select quantities and add to cart efficiently.",
+    "For the Admin Dashboard, use Shadcn components extensively (Tables, Charts) in a dense, information-rich Bento grid layout.",
+    "The Thermal Printer View is a critical piece: create a separate route or hidden component that becomes visible via CSS print media queries. It must be black and white, max 80mm wide, using monospace fonts for clarity.",
+    "Use 'lucide-react' for all iconography.",
+    "Do not use placeholder images like via.placeholder.com. Use the URLs provided in the media object."
+  ]
+}
