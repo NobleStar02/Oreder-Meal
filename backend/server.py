@@ -287,6 +287,7 @@ async def admin_list_menu(date: Optional[str] = None, user: dict = Depends(requi
 
 @api_router.post("/admin/menu")
 async def admin_create_menu(payload: MenuItemIn, user: dict = Depends(require_admin)):
+    new_date = payload.available_date or today_iso()
     item = {
         "id": str(uuid.uuid4()),
         "name": payload.name,
@@ -295,10 +296,15 @@ async def admin_create_menu(payload: MenuItemIn, user: dict = Depends(require_ad
         "image_path": payload.image_path,
         "category": payload.category or "Ana Yemek",
         "available": payload.available,
-        "available_date": payload.available_date or today_iso(),
+        "available_date": new_date,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.menu_items.insert_one(item)
+    # Auto-deactivate any menu items from previous dates
+    await db.menu_items.update_many(
+        {"available_date": {"$lt": new_date}, "available": True},
+        {"$set": {"available": False}},
+    )
     item.pop("_id", None)
     return item
 
