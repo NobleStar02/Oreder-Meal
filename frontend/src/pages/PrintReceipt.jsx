@@ -43,6 +43,20 @@ export default function PrintReceipt() {
       </div>
 
       <div className="thermal-receipt shadow-lg" data-testid="thermal-receipt">
+        {order.is_revised && (
+          <div style={{
+            background: "black",
+            color: "white",
+            textAlign: "center",
+            padding: "6px 0",
+            fontSize: 14,
+            fontWeight: "bold",
+            letterSpacing: "0.15em",
+            marginBottom: 6,
+          }} data-testid="receipt-revised-banner">
+            *** DÜZELTİLDİ (×{order.revision_count || 1}) ***
+          </div>
+        )}
         <div style={{ textAlign: "center", borderBottom: "1px dashed black", paddingBottom: 6, marginBottom: 6 }}>
           <div style={{ fontWeight: "bold", fontSize: 14, letterSpacing: "0.05em" }}>DOYURAN GÜVEÇ LOKANTASI</div>
           <div style={{ fontSize: 10 }}>Günlük Taze · Öğle Paketi</div>
@@ -57,6 +71,11 @@ export default function PrintReceipt() {
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
           <span>Saat:</span><span>{formatTimeTR(order.created_at)}</span>
         </div>
+        {order.is_revised && order.last_revised_at && (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: "bold" }}>
+            <span>Düzeltildi:</span><span>{formatTimeTR(order.last_revised_at)}</span>
+          </div>
+        )}
 
         <div style={{ borderTop: "1px dashed black", margin: "6px 0" }} />
 

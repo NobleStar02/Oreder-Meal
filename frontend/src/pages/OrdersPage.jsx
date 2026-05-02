@@ -3,7 +3,9 @@ import { Link } from "react-router-dom";
 import { api, formatDateTR, formatTimeTR, CATEGORY_ORDER, categoryRank } from "../lib/api";
 import NavBar from "../components/NavBar";
 import { Badge } from "../components/ui/badge";
-import { Printer, ChevronDown, ChevronUp, Clock } from "lucide-react";
+import { Button } from "../components/ui/button";
+import EditOrderDialog from "../components/EditOrderDialog";
+import { Printer, ChevronDown, ChevronUp, Clock, Pencil, AlertTriangle } from "lucide-react";
 
 const STATUS_LABELS = {
   yeni: { label: "Yeni", cls: "bg-[#E8AA42]/15 text-[#9F7012] border-[#E8AA42]/30" },
@@ -16,10 +18,14 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [editingOrder, setEditingOrder] = useState(null);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
     api.get("/orders/me").then((r) => setOrders(r.data)).finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { load(); }, []);
 
   return (
     <div className="min-h-screen bg-[#F9F6F0]">
@@ -48,7 +54,14 @@ export default function OrdersPage() {
                       #{o.order_no}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-[#2C2A29]">{formatDateTR(o.created_at)} · {formatTimeTR(o.created_at)}</div>
+                      <div className="font-semibold text-[#2C2A29] flex items-center gap-2 flex-wrap">
+                        {formatDateTR(o.created_at)} · {formatTimeTR(o.created_at)}
+                        {o.is_revised && (
+                          <span className="inline-flex items-center gap-1 bg-[#E8AA42]/15 text-[#9F7012] text-[10px] uppercase tracking-[0.15em] font-bold px-2 py-0.5 rounded-full border border-[#E8AA42]/30">
+                            <AlertTriangle size={10} /> Düzeltildi ×{o.revision_count}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-sm text-[#8A8580]">{o.items.length} kalem · {o.items.reduce((s, i) => s + i.quantity, 0)} adet</div>
                     </div>
                     <Badge className={`border ${st.cls} rounded-full px-3 py-1 font-semibold`}>{st.label}</Badge>
@@ -68,9 +81,26 @@ export default function OrdersPage() {
                               <div className="text-sm text-[#2C2A29] mb-4">{o.note}</div>
                             </>
                           )}
-                          <Link to={`/print/${o.id}`} className="inline-flex items-center gap-2 text-sm text-[#C05A46] font-semibold hover:underline" data-testid={`order-print-${o.id}`}>
-                            <Printer size={14} /> Fişi yazdır / görüntüle
-                          </Link>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <Link to={`/print/${o.id}`} className="inline-flex items-center gap-2 text-sm text-[#C05A46] font-semibold hover:underline" data-testid={`order-print-${o.id}`}>
+                              <Printer size={14} /> Fişi yazdır / görüntüle
+                            </Link>
+                            {o.status === "yeni" && (
+                              <Button
+                                onClick={(e) => { e.stopPropagation(); setEditingOrder(o); }}
+                                size="sm"
+                                className="bg-[#2C2A29] hover:bg-[#1a1918] text-white rounded-full h-8"
+                                data-testid={`order-edit-${o.id}`}
+                              >
+                                <Pencil size={12} className="mr-1.5" /> Siparişi Düzenle
+                              </Button>
+                            )}
+                          </div>
+                          {o.status !== "yeni" && (
+                            <div className="mt-3 text-xs text-[#8A8580]">
+                              Sipariş hazırlanmaya başlandığı için artık düzenlenemez.
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -81,6 +111,13 @@ export default function OrdersPage() {
           </ul>
         )}
       </section>
+
+      <EditOrderDialog
+        open={!!editingOrder}
+        onOpenChange={(v) => !v && setEditingOrder(null)}
+        order={editingOrder}
+        onSaved={load}
+      />
     </div>
   );
 }

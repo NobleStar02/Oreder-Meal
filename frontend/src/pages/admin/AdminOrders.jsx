@@ -6,7 +6,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Badge } from "../../components/ui/badge";
-import { Printer, RefreshCw, ChefHat, Check, X, Clock } from "lucide-react";
+import { Printer, RefreshCw, ChefHat, Check, X, Clock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -86,7 +86,12 @@ export default function AdminOrders() {
           orders.map((o) => {
             const st = STATUS_LABELS[o.status] || STATUS_LABELS.yeni;
             return (
-              <div key={o.id} className="bg-white rounded-2xl border border-[#E5DFD3] p-5" data-testid={`admin-order-${o.id}`}>
+              <div key={o.id} className={`rounded-2xl border p-5 ${o.is_revised ? "bg-[#E8AA42]/10 border-[#E8AA42]/50 ring-2 ring-[#E8AA42]/30" : "bg-white border-[#E5DFD3]"}`} data-testid={`admin-order-${o.id}`}>
+                {o.is_revised && (
+                  <div className="flex items-center gap-2 bg-[#2C2A29] text-white text-xs uppercase tracking-[0.2em] font-bold px-3 py-1.5 rounded-full mb-3 w-fit" data-testid={`admin-order-revised-${o.id}`}>
+                    <AlertTriangle size={12} /> Düzeltildi ×{o.revision_count || 1} — Fişi yeniden yazdırın
+                  </div>
+                )}
                 <div className="flex flex-wrap items-start gap-4">
                   <div className="w-14 h-14 rounded-full bg-[#C05A46]/10 grid place-items-center font-mono font-bold text-[#C05A46]">
                     #{o.order_no}

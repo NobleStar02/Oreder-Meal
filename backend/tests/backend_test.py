@@ -315,6 +315,153 @@ class TestOrders:
         assert r.status_code == 403
 
 
+# ---------- Order Edit (PUT /orders/{id}) Tests ----------
+class TestOrderEdit:
+    """Tests for company self-edit of orders (status='yeni')."""
+
+    @pytest.fixture(scope="class")
+    def extra_menu_items(self, admin_session):
+        """Two extra items so edit flow can remove & add."""
+        created = []
+        for label, cat in [("Corba", "Çorba"), ("Tatli", "Tatlı")]:
+            r = admin_session.post(f"{API}/admin/menu", json={
+                "name": f"TEST_Edit_{label}_{RUN_ID}",
+                "price": 0.0,
+                "category": cat,
+                "available": True,
+                "available_date": today_iso(),
+            })
+            assert r.status_code == 200, r.text
+            created.append(r.json())
+        yield created
+        for it in created:
+            admin_session.delete(f"{API}/admin/menu/{it['id']}")
+
+    @pytest.fixture(scope="class")
+    def edit_company_session(self):
+        s = requests.Session()
+        email = f"edit_firma_{uuid.uuid4().hex[:8]}@example.com"
+        r = s.post(f"{API}/auth/register", json={
+            "email": email, "password": "Firma2026!",
+            "company_name": f"TEST_Edit_Firma_{RUN_ID}",
+        })
+        assert r.status_code == 200, r.text
+        return s
+
+    @pytest.fixture(scope="class")
+    def fresh_order(self, edit_company_session, seeded_menu_item, extra_menu_items):
+        """Create a new 'yeni' order owned by edit_company_session."""
+        payload = {
+            "items": [
+                {"menu_item_id": seeded_menu_item["id"], "quantity": 2},
+                {"menu_item_id": extra_menu_items[0]["id"], "quantity": 1},
+            ],
+            "note": "ilk sipariş",
+        }
+        r = edit_company_session.post(f"{API}/orders", json=payload)
+        assert r.status_code == 200, r.text
+        order = r.json()
+        # Initial state assertions (new feature)
+        assert order["is_revised"] is False
+        assert order["revision_count"] == 0
+        assert order["status"] == "yeni"
+        return order
+
+    def test_new_order_has_revised_false_and_count_zero(self, fresh_order):
+        assert fresh_order["is_revised"] is False
+        assert fresh_order["revision_count"] == 0
+        assert "last_revised_at" not in fresh_order or fresh_order.get("last_revised_at") in (None, "")
+
+    def test_edit_order_success_updates_items_note_and_sort(
+        self, edit_company_session, fresh_order, seeded_menu_item, extra_menu_items
+    ):
+        # Remove soup-only, keep main, add dessert; change quantity & note
+        payload = {
+            "items": [
+                {"menu_item_id": extra_menu_items[1]["id"], "quantity": 1},  # Tatlı
+                {"menu_item_id": seeded_menu_item["id"], "quantity": 3},      # Ana Yemek
+            ],
+            "note": "az tuzlu olsun",
+        }
+        r = edit_company_session.put(f"{API}/orders/{fresh_order['id']}", json=payload)
+        assert r.status_code == 200, r.text
+        updated = r.json()
+        assert updated["is_revised"] is True
+        assert updated["revision_count"] == 1
+        assert updated.get("last_revised_at")
+        assert updated["note"] == "az tuzlu olsun"
+        assert len(updated["items"]) == 2
+        # Items must be sorted by category order: Ana Yemek (idx 1) before Tatlı (idx 4)
+        cats = [it["category"] for it in updated["items"]]
+        assert cats == ["Ana Yemek", "Tatlı"], cats
+
+        # Persistence check
+        r2 = edit_company_session.get(f"{API}/orders/{fresh_order['id']}")
+        assert r2.status_code == 200
+        fetched = r2.json()
+        assert fetched["revision_count"] == 1
+        assert fetched["is_revised"] is True
+        assert fetched["note"] == "az tuzlu olsun"
+
+    def test_second_edit_increments_revision_count(
+        self, edit_company_session, fresh_order, seeded_menu_item
+    ):
+        payload = {
+            "items": [{"menu_item_id": seeded_menu_item["id"], "quantity": 5}],
+            "note": "ikinci düzenleme",
+        }
+        r = edit_company_session.put(f"{API}/orders/{fresh_order['id']}", json=payload)
+        assert r.status_code == 200
+        data = r.json()
+        assert data["revision_count"] == 2
+        assert data["is_revised"] is True
+        assert data["note"] == "ikinci düzenleme"
+        assert len(data["items"]) == 1
+
+    def test_edit_empty_items_returns_400(self, edit_company_session, fresh_order):
+        r = edit_company_session.put(
+            f"{API}/orders/{fresh_order['id']}", json={"items": [], "note": ""}
+        )
+        assert r.status_code == 400
+
+    def test_edit_unauthenticated_returns_401(self, fresh_order, seeded_menu_item):
+        r = requests.put(
+            f"{API}/orders/{fresh_order['id']}",
+            json={"items": [{"menu_item_id": seeded_menu_item["id"], "quantity": 1}]},
+        )
+        assert r.status_code == 401
+
+    def test_edit_by_other_company_returns_403(self, fresh_order, seeded_menu_item):
+        s2 = requests.Session()
+        email = f"other_edit_{uuid.uuid4().hex[:6]}@example.com"
+        r = s2.post(f"{API}/auth/register", json={
+            "email": email, "password": "Other2026!",
+            "company_name": f"TEST_Other_{RUN_ID}",
+        })
+        assert r.status_code == 200
+        r = s2.put(
+            f"{API}/orders/{fresh_order['id']}",
+            json={"items": [{"menu_item_id": seeded_menu_item["id"], "quantity": 1}]},
+        )
+        assert r.status_code == 403
+
+    def test_edit_blocked_when_status_not_yeni(
+        self, edit_company_session, admin_session, fresh_order, seeded_menu_item
+    ):
+        # Admin moves order to hazirlaniyor
+        r = admin_session.put(
+            f"{API}/admin/orders/{fresh_order['id']}/status",
+            params={"status": "hazirlaniyor"},
+        )
+        assert r.status_code == 200
+        # Company tries to edit → 400
+        r = edit_company_session.put(
+            f"{API}/orders/{fresh_order['id']}",
+            json={"items": [{"menu_item_id": seeded_menu_item["id"], "quantity": 1}]},
+        )
+        assert r.status_code == 400
+
+
 # ---------- Analytics ----------
 class TestAnalytics:
     def test_analytics_summary(self, admin_session):

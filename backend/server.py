@@ -177,6 +177,10 @@ class OrderIn(BaseModel):
     items: List[OrderItemIn]
     note: Optional[str] = ""
 
+class OrderUpdateIn(BaseModel):
+    items: List[OrderItemIn]
+    note: Optional[str] = ""
+
 # ========== App ==========
 app = FastAPI(title="Doyuran Güveç API")
 api_router = APIRouter(prefix="/api")
@@ -375,12 +379,60 @@ async def place_order(payload: OrderIn, user: dict = Depends(get_current_user)):
         "total": round(total, 2),
         "note": payload.note or "",
         "status": "yeni",  # yeni | hazirlaniyor | tamamlandi | iptal
+        "is_revised": False,
+        "revision_count": 0,
         "order_date": today,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.orders.insert_one(order)
     order.pop("_id", None)
     return order
+
+@api_router.put("/orders/{order_id}")
+async def update_own_order(order_id: str, payload: OrderUpdateIn, user: dict = Depends(get_current_user)):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Sipariş bulunamadı")
+    if order["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Bu sipariş size ait değil")
+    if order["status"] != "yeni":
+        raise HTTPException(status_code=400, detail="Sipariş hazırlanmaya başlandığı için düzenlenemez")
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="Sipariş boş olamaz")
+
+    item_ids = [it.menu_item_id for it in payload.items]
+    menu_items = await db.menu_items.find({"id": {"$in": item_ids}}, {"_id": 0}).to_list(200)
+    menu_map = {m["id"]: m for m in menu_items}
+
+    order_items = []
+    total = 0.0
+    for it in payload.items:
+        m = menu_map.get(it.menu_item_id)
+        if not m:
+            raise HTTPException(status_code=400, detail=f"Yemek bulunamadı: {it.menu_item_id}")
+        line_total = m.get("price", 0) * it.quantity
+        order_items.append({
+            "menu_item_id": m["id"],
+            "name": m["name"],
+            "price": m.get("price", 0),
+            "category": m.get("category", "Ana Yemek"),
+            "quantity": it.quantity,
+            "line_total": line_total,
+        })
+        total += line_total
+    order_items.sort(key=lambda x: _category_rank(x.get("category", "")))
+
+    update = {
+        "items": order_items,
+        "total": round(total, 2),
+        "note": payload.note or "",
+        "is_revised": True,
+        "revision_count": order.get("revision_count", 0) + 1,
+        "last_revised_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.orders.update_one({"id": order_id}, {"$set": update})
+    updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return updated
 
 @api_router.get("/orders/me")
 async def my_orders(user: dict = Depends(get_current_user)):
