@@ -150,11 +150,6 @@ function CartList() {
           <ul className="space-y-2">
             {items.map((i) => (
               <li key={i.id} className="flex items-center gap-3 bg-white rounded-xl border border-[#E5DFD3] p-3" data-testid={`cart-item-${i.id}`}>
-                {i.image_path ? (
-                  <img src={fileUrl(i.image_path)} alt="" className="w-12 h-12 rounded-lg object-cover" />
-                ) : (
-                  <div className="w-12 h-12 rounded-lg bg-[#F2EBE3] grid place-items-center"><Utensils size={18} className="text-[#C05A46]" /></div>
-                )}
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-[#2C2A29] truncate">{i.name}</div>
                   <div className="text-xs text-[#8A8580]">Adet: {i.quantity}</div>
@@ -206,45 +201,32 @@ function MenuCard({ item, idx }) {
   const [qty, setQty] = useState(1);
   return (
     <div
-      className="bg-white rounded-2xl overflow-hidden border border-[#E5DFD3] shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-200 flex flex-col fade-up"
+      className="bg-white rounded-2xl overflow-hidden border border-[#E5DFD3] shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-200 flex flex-col fade-up p-6"
       style={{ animationDelay: `${idx * 60}ms` }}
       data-testid={`menu-card-${item.id}`}
     >
-      <div className="aspect-[4/3] bg-[#F2EBE3] relative overflow-hidden">
-        {item.image_path ? (
-          <img src={fileUrl(item.image_path)} alt={item.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full grid place-items-center">
-            <Utensils size={48} className="text-[#C05A46]/40" />
-          </div>
-        )}
-        {item.category && (
-          <span className="absolute top-3 left-3 bg-white/90 backdrop-blur text-[#2C2A29] text-[10px] uppercase tracking-[0.2em] font-bold px-2.5 py-1 rounded-full">
-            {item.category}
-          </span>
-        )}
-      </div>
-      <div className="p-5 flex-1 flex flex-col">
-        <div className="font-heading text-xl font-bold text-[#2C2A29] tracking-tight">{item.name}</div>
-        {item.description && (
-          <p className="text-sm text-[#5C5855] mt-1.5 leading-relaxed line-clamp-2">{item.description}</p>
-        )}
-        <div className="mt-auto pt-5 flex items-center justify-end gap-3">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center bg-[#F2EBE3] rounded-full">
-              <button onClick={() => setQty(Math.max(1, qty - 1))} className="w-8 h-8 rounded-full grid place-items-center hover:bg-[#E5DFD3]" data-testid={`menu-qty-decrease-${item.id}`}><Minus size={14} /></button>
-              <span className="w-7 text-center text-sm font-semibold" data-testid={`menu-qty-${item.id}`}>{qty}</span>
-              <button onClick={() => setQty(qty + 1)} className="w-8 h-8 rounded-full grid place-items-center hover:bg-[#E5DFD3]" data-testid={`menu-qty-increase-${item.id}`}><Plus size={14} /></button>
-            </div>
-            <Button
-              onClick={() => { cart.addItem(item, qty); toast.success(`${item.name} sepete eklendi`); setQty(1); }}
-              className="bg-[#2C2A29] hover:bg-[#1a1918] text-white rounded-full px-5 h-9"
-              data-testid={`menu-add-${item.id}`}
-            >
-              Ekle
-            </Button>
-          </div>
+      {item.category && (
+        <span className="self-start bg-[#F2EBE3] text-[#C05A46] text-[10px] uppercase tracking-[0.2em] font-bold px-2.5 py-1 rounded-full mb-3">
+          {item.category}
+        </span>
+      )}
+      <div className="font-heading text-xl md:text-2xl font-bold text-[#2C2A29] tracking-tight">{item.name}</div>
+      {item.description && (
+        <p className="text-sm text-[#5C5855] mt-1.5 leading-relaxed">{item.description}</p>
+      )}
+      <div className="mt-5 pt-5 border-t border-dashed border-[#E5DFD3] flex items-center justify-end gap-2">
+        <div className="flex items-center bg-[#F2EBE3] rounded-full">
+          <button onClick={() => setQty(Math.max(1, qty - 1))} className="w-8 h-8 rounded-full grid place-items-center hover:bg-[#E5DFD3]" data-testid={`menu-qty-decrease-${item.id}`}><Minus size={14} /></button>
+          <span className="w-7 text-center text-sm font-semibold" data-testid={`menu-qty-${item.id}`}>{qty}</span>
+          <button onClick={() => setQty(qty + 1)} className="w-8 h-8 rounded-full grid place-items-center hover:bg-[#E5DFD3]" data-testid={`menu-qty-increase-${item.id}`}><Plus size={14} /></button>
         </div>
+        <Button
+          onClick={() => { cart.addItem(item, qty); toast.success(`${item.name} sepete eklendi`); setQty(1); }}
+          className="bg-[#2C2A29] hover:bg-[#1a1918] text-white rounded-full px-5 h-9"
+          data-testid={`menu-add-${item.id}`}
+        >
+          Ekle
+        </Button>
       </div>
     </div>
   );

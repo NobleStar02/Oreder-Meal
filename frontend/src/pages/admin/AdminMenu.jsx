@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { api, fileUrl, formatApiErrorDetail } from "../../lib/api";
+import { useEffect, useState } from "react";
+import { api, formatApiErrorDetail } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -8,13 +8,13 @@ import { Switch } from "../../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../../components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Upload, Utensils } from "lucide-react";
+import { Plus, Pencil, Trash2, Utensils } from "lucide-react";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 const CATEGORIES = ["Çorba", "Ana Yemek", "Yan Yemek", "İçecek", "Tatlı"];
 
-const empty = { name: "", description: "", category: "Ana Yemek", available: true, image_path: null, available_date: todayISO() };
+const empty = { name: "", description: "", category: "Ana Yemek", available: true, available_date: todayISO() };
 
 export default function AdminMenu() {
   const [date, setDate] = useState(todayISO());
@@ -23,8 +23,6 @@ export default function AdminMenu() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef();
 
   const load = () => {
     setLoading(true);
@@ -40,28 +38,9 @@ export default function AdminMenu() {
       description: it.description || "",
       category: CATEGORIES.includes(it.category) ? it.category : "Ana Yemek",
       available: it.available !== false,
-      image_path: it.image_path || null,
       available_date: it.available_date || todayISO(),
     });
     setOpen(true);
-  };
-
-  const onUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
-      setForm((f) => ({ ...f, image_path: data.path }));
-      toast.success("Görsel yüklendi");
-    } catch (err) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
   };
 
   const save = async () => {
@@ -71,7 +50,6 @@ export default function AdminMenu() {
         description: form.description,
         category: form.category,
         available: form.available,
-        image_path: form.image_path,
         available_date: form.available_date,
       };
       if (editing) {
@@ -130,11 +108,6 @@ export default function AdminMenu() {
           <ul className="divide-y divide-[#E5DFD3]">
             {items.map((it) => (
               <li key={it.id} className="p-4 flex items-center gap-4" data-testid={`admin-menu-row-${it.id}`}>
-                {it.image_path ? (
-                  <img src={fileUrl(it.image_path)} alt="" className="w-14 h-14 rounded-lg object-cover" />
-                ) : (
-                  <div className="w-14 h-14 rounded-lg bg-[#F2EBE3] grid place-items-center text-[#C05A46]"><Utensils size={20} /></div>
-                )}
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-[#2C2A29] truncate">{it.name}</div>
                   <div className="text-sm text-[#8A8580] truncate">{it.description || "—"}</div>
@@ -157,23 +130,6 @@ export default function AdminMenu() {
             <DialogTitle className="font-heading text-2xl">{editing ? "Yemeği Düzenle" : "Yeni Yemek Ekle"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div>
-              <Label>Görsel</Label>
-              <div className="mt-2 flex items-center gap-3">
-                {form.image_path ? (
-                  <img src={fileUrl(form.image_path)} alt="" className="w-20 h-20 rounded-lg object-cover border border-[#E5DFD3]" />
-                ) : (
-                  <div className="w-20 h-20 rounded-lg bg-[#F2EBE3] grid place-items-center text-[#C05A46]"><Utensils size={24} /></div>
-                )}
-                <div>
-                  <input ref={fileRef} type="file" accept="image/*" onChange={onUpload} className="hidden" />
-                  <Button type="button" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading} className="rounded-full border-[#E5DFD3]" data-testid="admin-menu-upload-image">
-                    <Upload size={14} className="mr-2" /> {uploading ? "Yükleniyor…" : "Görsel Yükle"}
-                  </Button>
-                  <div className="text-xs text-[#8A8580] mt-1">JPG/PNG, en fazla 5MB</div>
-                </div>
-              </div>
-            </div>
             <div>
               <Label htmlFor="name">İsim *</Label>
               <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 rounded-lg border-[#E5DFD3]" data-testid="admin-menu-name-input" />
