@@ -106,8 +106,12 @@ export default function PrintReceipt() {
 
         <div style={{ borderTop: "1px dashed black", margin: "6px 0" }} />
 
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: "bold" }}>
-          <span>TOPLAM ADET</span><span>{totalQty}</span>
+        <div style={{ display: "flex", fontSize: 13, fontWeight: "bold", alignItems: "center" }}>
+          <span style={{ flex: 1 }}>TOPLAM: {totalQty}</span>
+          <span style={{ flex: 1, textAlign: "center", fontSize: 18 }}>
+            {groups.find(g => g.cat === "Ana Yemek")?.items.reduce((s, i) => s + i.quantity, 0) || 0} KİŞİLİK
+          </span>
+          <span style={{ flex: 1 }}></span>
         </div>
 
         {order.note && (

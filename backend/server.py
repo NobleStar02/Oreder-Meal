@@ -63,7 +63,6 @@ class MenuItem(Base):
     name = Column(String)
     description = Column(String)
     price = Column(Float)
-    image_path = Column(String)
     category = Column(String)
     available = Column(Boolean)
     available_date = Column(String, index=True)
@@ -103,32 +102,7 @@ class OrderItem(Base):
     
     order = relationship("Order", back_populates="items")
 
-class FileRecord(Base):
-    __tablename__ = 'files'
-    id = Column(String, primary_key=True)
-    storage_path = Column(String, unique=True, index=True)
-    original_filename = Column(String)
-    content_type = Column(String)
-    size = Column(Integer)
-    is_deleted = Column(Boolean)
-    created_at = Column(String)
 
-# ========== Local File Storage ==========
-def put_object_local(path: str, data: bytes, content_type: str) -> dict:
-    file_path = UPLOADS_DIR / path
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_bytes(data)
-    return {"path": path, "size": len(data)}
-
-def get_object_local(path: str):
-    file_path = UPLOADS_DIR / path
-    if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {path}")
-    data = file_path.read_bytes()
-    ext = file_path.suffix.lower()
-    content_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
-    content_type = content_types.get(ext, "application/octet-stream")
-    return data, content_type
 
 # ========== Auth Helpers ==========
 def hash_password(password: str) -> str:
@@ -211,7 +185,6 @@ class MenuItemIn(BaseModel):
     name: str
     description: Optional[str] = ""
     price: float = 0.0
-    image_path: Optional[str] = None
     category: Optional[str] = "Ana Yemek"
     available: bool = True
     available_date: Optional[str] = None
@@ -220,7 +193,6 @@ class MenuItemUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     price: Optional[float] = None
-    image_path: Optional[str] = None
     category: Optional[str] = None
     available: Optional[bool] = None
     available_date: Optional[str] = None
@@ -308,46 +280,6 @@ async def logout(response: Response):
 async def me(user: dict = Depends(get_current_user)):
     return user
 
-# ---------- Upload Routes ----------
-@api_router.post("/upload")
-async def upload(file: UploadFile = File(...), user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
-    if ext not in ["jpg", "jpeg", "png", "webp", "gif"]:
-        raise HTTPException(status_code=400, detail="Sadece resim dosyaları kabul edilir")
-    
-    path = f"{APP_NAME}/menu/{user['id']}/{uuid.uuid4()}.{ext}"
-    data = await file.read()
-    if len(data) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Dosya 5MB'tan büyük olamaz")
-        
-    content_type = file.content_type or f"image/{ext}"
-    result = put_object_local(path, data, content_type)
-    
-    fr = FileRecord(
-        id=str(uuid.uuid4()),
-        storage_path=result["path"],
-        original_filename=file.filename,
-        content_type=content_type,
-        size=result.get("size", len(data)),
-        is_deleted=False,
-        created_at=datetime.now(timezone.utc).isoformat()
-    )
-    db.add(fr)
-    await db.commit()
-    return {"path": result["path"]}
-
-@api_router.get("/files/{path:path}")
-async def download_file(path: str, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(FileRecord).where(FileRecord.storage_path == path, FileRecord.is_deleted == False))
-    record = res.scalars().first()
-    if not record:
-        raise HTTPException(status_code=404, detail="Dosya bulunamadı")
-    try:
-        data, content_type = get_object_local(path)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Dosya bulunamadı")
-    return FastAPIResponse(content=data, media_type=record.content_type or content_type)
-
 # ---------- Menu Routes ----------
 @api_router.get("/menu/today")
 async def menu_today(db: AsyncSession = Depends(get_db)):
@@ -355,7 +287,7 @@ async def menu_today(db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(MenuItem).where(MenuItem.available == True, MenuItem.available_date == today))
     items = res.scalars().all()
     out = [{"id": i.id, "name": i.name, "description": i.description, "price": i.price, 
-            "image_path": i.image_path, "category": i.category, "available": i.available, "available_date": i.available_date} for i in items]
+            "category": i.category, "available": i.available, "available_date": i.available_date} for i in items]
     out.sort(key=lambda x: _category_rank(x.get("category", "")))
     return out
 
@@ -367,7 +299,7 @@ async def admin_list_menu(date: Optional[str] = None, user: dict = Depends(requi
     res = await db.execute(query)
     items = res.scalars().all()
     out = [{"id": i.id, "name": i.name, "description": i.description, "price": i.price, 
-            "image_path": i.image_path, "category": i.category, "available": i.available, "available_date": i.available_date} for i in items]
+            "category": i.category, "available": i.available, "available_date": i.available_date} for i in items]
     out.sort(key=lambda x: _category_rank(x.get("category", "")))
     return out
 
@@ -380,7 +312,6 @@ async def admin_create_menu(payload: MenuItemIn, user: dict = Depends(require_ad
         name=payload.name,
         description=payload.description or "",
         price=float(payload.price),
-        image_path=payload.image_path,
         category=payload.category or "Ana Yemek",
         available=payload.available,
         available_date=new_date,
@@ -394,7 +325,7 @@ async def admin_create_menu(payload: MenuItemIn, user: dict = Depends(require_ad
         o.available = False
         
     await db.commit()
-    return {"id": item.id, "name": item.name, "description": item.description, "price": item.price, "image_path": item.image_path, "category": item.category, "available": item.available, "available_date": item.available_date}
+    return {"id": item.id, "name": item.name, "description": item.description, "price": item.price, "category": item.category, "available": item.available, "available_date": item.available_date}
 
 @api_router.put("/admin/menu/{item_id}")
 async def admin_update_menu(item_id: str, payload: MenuItemUpdate, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
@@ -408,7 +339,7 @@ async def admin_update_menu(item_id: str, payload: MenuItemUpdate, user: dict = 
             setattr(item, k, v)
             
     await db.commit()
-    return {"id": item.id, "name": item.name, "description": item.description, "price": item.price, "image_path": item.image_path, "category": item.category, "available": item.available, "available_date": item.available_date}
+    return {"id": item.id, "name": item.name, "description": item.description, "price": item.price, "category": item.category, "available": item.available, "available_date": item.available_date}
 
 @api_router.delete("/admin/menu/{item_id}")
 async def admin_delete_menu(item_id: str, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):

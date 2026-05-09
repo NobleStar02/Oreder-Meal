@@ -45,11 +45,14 @@ export function fileUrl(path) {
   return `${API}/files/${path}`;
 }
 
-export const CATEGORY_ORDER = ["Çorba", "Ana Yemek", "Yan Yemek", "İçecek", "Tatlı"];
+export const CATEGORY_ORDER = ["Çorba", "Çorbalar", "Ana Yemek", "Yan Yemek", "Yan Lezzetler", "İçecek", "İçecekler", "Tatlı", "Tatlılar"];
 
 export function categoryRank(cat) {
-  const i = CATEGORY_ORDER.indexOf(cat);
-  return i === -1 ? 999 : i;
+  if (!cat) return 999;
+  for (let i = 0; i < CATEGORY_ORDER.length; i++) {
+    if (cat.toLowerCase().includes(CATEGORY_ORDER[i].toLowerCase())) return i;
+  }
+  return 999;
 }
 
 export function sortByCategory(arr) {
