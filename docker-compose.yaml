@@ -31,12 +31,6 @@ services:
       - backend-uploads:/app/uploads
     expose:
       - "8000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/menu/today"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     networks:
       - app-network
 
@@ -51,8 +45,7 @@ services:
     expose:
       - "80"
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     networks:
       - app-network
 
