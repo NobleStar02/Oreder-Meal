@@ -1,0 +1,67 @@
+# ════════════════════════════════════════════
+# Doyuran Güveç - Docker Compose (Coolify)
+# ════════════════════════════════════════════
+#
+# Coolify'da "Docker Compose" kaynak tipi ile kullanılır.
+# Repo kökünden (Oreder-Meal/) docker-compose.yml olarak çalışır.
+#
+# Gerekli Coolify Environment Variables:
+#   - JWT_SECRET          (zorunlu, güçlü rastgele bir string)
+#   - ADMIN_EMAIL         (admin giriş e-postası)
+#   - ADMIN_PASSWORD      (admin giriş şifresi)
+#   - COOKIE_SECURE       (true olmalı - HTTPS zorunlu)
+#
+# ════════════════════════════════════════════
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: doyuran-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./doyuran_guvec.db
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@test.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
+    volumes:
+      - backend-data:/app
+      - backend-uploads:/app/uploads
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/menu/today')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_BACKEND_URL=
+    container_name: doyuran-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+
+volumes:
+  backend-data:
+    driver: local
+  backend-uploads:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
