@@ -48,8 +48,8 @@ services:
         - REACT_APP_BACKEND_URL=
     container_name: doyuran-frontend
     restart: unless-stopped
-    ports:
-      - "80:80"
+    expose:
+      - "80"
     depends_on:
       backend:
         condition: service_healthy
