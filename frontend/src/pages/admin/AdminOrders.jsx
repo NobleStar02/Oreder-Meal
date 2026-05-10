@@ -1,28 +1,23 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { api, formatTimeTR, formatApiErrorDetail, CATEGORY_ORDER, categoryRank } from "../../lib/api";
+import { api, formatTimeTR, formatApiErrorDetail, groupByCategory, todayISO, STATUS_LABELS } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Badge } from "../../components/ui/badge";
-import { Printer, RefreshCw, ChefHat, Check, X, Clock, AlertTriangle } from "lucide-react";
+import { Printer, RefreshCw, ChefHat, Check, X, Clock, AlertTriangle, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
-
-const todayISO = () => new Date().toISOString().slice(0, 10);
-
-const STATUS_LABELS = {
-  yeni: { label: "Yeni", cls: "bg-[#E8AA42]/15 text-[#9F7012] border-[#E8AA42]/30", icon: <Clock size={12} /> },
-  hazirlaniyor: { label: "Hazırlanıyor", cls: "bg-[#4A7C9D]/15 text-[#2F587A] border-[#4A7C9D]/30", icon: <ChefHat size={12} /> },
-  tamamlandi: { label: "Tamamlandı", cls: "bg-[#4A5D23]/15 text-[#3A4A1A] border-[#4A5D23]/30", icon: <Check size={12} /> },
-  iptal: { label: "İptal", cls: "bg-[#B93A32]/15 text-[#7A2520] border-[#B93A32]/30", icon: <X size={12} /> },
-};
 
 export default function AdminOrders() {
   const [date, setDate] = useState(todayISO());
   const [status, setStatus] = useState("all");
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryPrinting, setSummaryPrinting] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -45,6 +40,31 @@ export default function AdminOrders() {
       load();
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    }
+  };
+
+  const loadSummary = async () => {
+    setSummaryLoading(true);
+    try {
+      const res = await api.get(`/admin/daily-summary?date=${date}`);
+      setSummary(res.data);
+      setSummaryOpen(true);
+    } catch (err) {
+      toast.error("Özet yüklenemedi");
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  const printSummary = async () => {
+    setSummaryPrinting(true);
+    try {
+      await api.post(`/admin/daily-summary/print?date=${date}`);
+      toast.success("Özet fişi yazıcıya gönderildi");
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Yazdırma hatası");
+    } finally {
+      setSummaryPrinting(false);
     }
   };
 
@@ -74,6 +94,9 @@ export default function AdminOrders() {
             </Select>
           </div>
           <Button onClick={load} variant="outline" className="rounded-full border-[#E5DFD3] h-11" data-testid="admin-orders-refresh"><RefreshCw size={14} className="mr-2" /> Yenile</Button>
+          <Button onClick={loadSummary} disabled={summaryLoading} className="rounded-full bg-[#2C2A29] hover:bg-[#1a1918] text-white h-11" data-testid="admin-daily-summary">
+            <BarChart3 size={14} className="mr-2" /> {summaryLoading ? "Yükleniyor…" : "Gün Özeti"}
+          </Button>
         </div>
       </div>
 
@@ -103,6 +126,11 @@ export default function AdminOrders() {
                     </div>
                     <div className="text-sm text-[#8A8580]">
                       {formatTimeTR(o.created_at)}
+                      {o.meal_time && o.meal_time !== "Öğle" && (
+                        <span className="inline-flex items-center gap-1 ml-2 bg-[#2C2A29] text-white text-[10px] uppercase tracking-[0.15em] font-bold px-2 py-0.5 rounded-full">
+                          🌙 Akşam Yemeği Var
+                        </span>
+                      )}
                       {o.contact_name && <> · {o.contact_name}</>}
                       {o.phone && <> · {o.phone}</>}
                     </div>
@@ -121,6 +149,12 @@ export default function AdminOrders() {
                 {o.note && (
                   <div className="mt-3 bg-[#F2EBE3] rounded-lg px-3 py-2 text-sm text-[#2C2A29]">
                     <span className="font-bold">Not:</span> {o.note}
+                  </div>
+                )}
+
+                {o.meal_time && o.meal_time !== "Öğle" && (
+                  <div className="mt-3 bg-[#2C2A29] rounded-lg px-3 py-2 text-sm text-white">
+                    <span className="font-bold">🌙 Akşam Yemeği İsteği:</span> {o.meal_time}
                   </div>
                 )}
 
@@ -149,16 +183,68 @@ export default function AdminOrders() {
           })
         )}
       </div>
+
+      {/* Gün Özeti Paneli */}
+      {summaryOpen && summary && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSummaryOpen(false)}>
+          <div className="bg-white rounded-2xl border border-[#E5DFD3] max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-[#E5DFD3] flex items-center justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-[0.2em] font-bold text-[#C05A46]">Gün Özeti</div>
+                <div className="font-heading text-xl font-bold text-[#2C2A29] mt-1">{summary.date}</div>
+              </div>
+              <button onClick={() => setSummaryOpen(false)} className="w-8 h-8 rounded-full bg-[#F2EBE3] grid place-items-center hover:bg-[#E5DFD3]">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {summary.companies.length === 0 ? (
+                <div className="text-center text-[#8A8580] py-8">Bu tarihte sipariş yok.</div>
+              ) : (
+                <div className="space-y-3">
+                  {summary.companies.map((c) => (
+                    <div key={c.company} className="bg-[#F9F6F0] rounded-xl border border-[#E5DFD3] p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="font-heading text-lg font-bold text-[#2C2A29]">{c.company}</div>
+                        <div className="font-heading text-2xl font-bold text-[#C05A46]">{c.total}</div>
+                      </div>
+                      <div className="flex gap-4 mt-2 text-sm text-[#5C5855]">
+                        <span>🍽️ Öğle: <strong>{c.lunch_qty}</strong></span>
+                        {c.dinner_qty > 0 && <span>🌙 Akşam: <strong>{c.dinner_qty}</strong></span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-[#E5DFD3] bg-[#2C2A29] rounded-b-2xl">
+              <div className="flex items-center justify-between text-white">
+                <div className="text-sm font-bold uppercase tracking-[0.15em]">Genel Toplam</div>
+                <div className="font-heading text-3xl font-bold">{summary.grand_total.total}</div>
+              </div>
+              <div className="flex gap-4 mt-1 text-sm text-[#8A8580]">
+                <span>🍽️ Öğle: {summary.grand_total.lunch}</span>
+                {summary.grand_total.dinner > 0 && <span>🌙 Akşam: {summary.grand_total.dinner}</span>}
+              </div>
+              <Button
+                onClick={printSummary}
+                disabled={summaryPrinting}
+                className="mt-3 w-full bg-[#C05A46] hover:bg-[#A64A38] text-white rounded-full h-10"
+              >
+                <Printer size={14} className="mr-2" /> {summaryPrinting ? "Yazdırılıyor…" : "Özet Fişini Yazdır"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function CategorizedAdminItems({ items }) {
-  const groups = CATEGORY_ORDER
-    .map((cat) => ({ cat, items: items.filter((i) => (i.category || "Ana Yemek") === cat) }))
-    .filter((g) => g.items.length > 0);
-  const others = items.filter((i) => categoryRank(i.category || "Ana Yemek") === 999);
-  if (others.length) groups.push({ cat: "Diğer", items: others });
+  const groups = groupByCategory(items);
   return (
     <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
       {groups.map(({ cat, items: catItems }) => (

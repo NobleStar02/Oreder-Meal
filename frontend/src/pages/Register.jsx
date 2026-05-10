@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { formatApiErrorDetail } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -9,7 +10,7 @@ import { toast } from "sonner";
 import { ChefHat } from "lucide-react";
 
 export default function Register() {
-  const { register, formatApiErrorDetail } = useAuth();
+  const { register } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({
     company_name: "", contact_name: "", phone: "", address: "",

@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
-import { ChefHat, LayoutDashboard, Utensils, ListOrdered, BarChart3, LogOut, ExternalLink } from "lucide-react";
+import { ChefHat, LayoutDashboard, Utensils, ListOrdered, BarChart3, LogOut, ExternalLink, Library } from "lucide-react";
 import { Button } from "../../components/ui/button";
 
 const linkBase = "flex items-center gap-3 px-4 py-2.5 rounded-full text-sm font-medium transition-colors";
@@ -26,7 +26,10 @@ export default function AdminLayout() {
             <LayoutDashboard size={16} /> Genel Bakış
           </NavLink>
           <NavLink to="/admin/menu" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`} data-testid="admin-nav-menu">
-            <Utensils size={16} /> Menü Yönetimi
+            <Utensils size={16} /> Günlük Menü
+          </NavLink>
+          <NavLink to="/admin/catalog" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+            <Library size={16} /> Yemek Havuzu
           </NavLink>
           <NavLink to="/admin/orders" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`} data-testid="admin-nav-orders">
             <ListOrdered size={16} /> Siparişler

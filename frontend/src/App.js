@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { CartProvider } from "./lib/cart";
-import "./App.css";
 
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -14,6 +13,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminMenu from "./pages/admin/AdminMenu";
 import AdminOrders from "./pages/admin/AdminOrders";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
+import AdminCatalog from "./pages/admin/AdminCatalog";
 import PrintReceipt from "./pages/PrintReceipt";
 
 function ProtectedRoute({ children, roles }) {
@@ -39,12 +39,13 @@ function App() {
             <Route path="/admin" element={<ProtectedRoute roles={["admin"]}><AdminLayout /></ProtectedRoute>}>
               <Route index element={<AdminDashboard />} />
               <Route path="menu" element={<AdminMenu />} />
+              <Route path="catalog" element={<AdminCatalog />} />
               <Route path="orders" element={<AdminOrders />} />
               <Route path="analytics" element={<AdminAnalytics />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-          <Toaster position="top-right" richColors />
+          <Toaster position="top-right" richColors offset="64px" />
         </BrowserRouter>
       </CartProvider>
     </AuthProvider>

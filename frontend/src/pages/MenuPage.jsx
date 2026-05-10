@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, fileUrl, formatApiErrorDetail, sortByCategory, CATEGORY_ORDER, categoryRank } from "../lib/api";
+import { api, formatApiErrorDetail, sortByCategory, groupByCategory } from "../lib/api";
 import { useCart } from "../lib/cart";
 import { useAuth } from "../lib/auth";
 import NavBar from "../components/NavBar";
 import { Button } from "../components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
 import { Textarea } from "../components/ui/textarea";
-import { Plus, Minus, ShoppingBag, Utensils, Trash2 } from "lucide-react";
+import { Plus, Minus, ShoppingBag, Utensils, Trash2, Moon } from "lucide-react";
 import { toast } from "sonner";
 
 export default function MenuPage() {
@@ -34,6 +34,7 @@ export default function MenuPage() {
       const res = await api.post("/orders", {
         items: cart.items.map((i) => ({ menu_item_id: i.id, quantity: i.quantity })),
         note,
+        meal_time: cart.dinnerSummary || "",
       });
       cart.clear();
       setNote("");
@@ -95,6 +96,81 @@ export default function MenuPage() {
               <CartList />
             )}
 
+            {/* Akşam Yemeği Seçeneği */}
+            {cart.items.length > 0 && (
+              <div className="mt-5">
+                <button
+                  onClick={() => cart.setDinner(!cart.dinnerEnabled)}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                    cart.dinnerEnabled
+                      ? "border-[#C05A46] bg-[#C05A46]/10"
+                      : "border-[#E5DFD3] bg-white hover:border-[#C05A46]/40"
+                  }`}
+                  data-testid="dinner-toggle"
+                >
+                  <Moon size={18} className={cart.dinnerEnabled ? "text-[#C05A46]" : "text-[#8A8580]"} />
+                  <div className="flex-1 text-left">
+                    <div className={`text-sm font-semibold ${cart.dinnerEnabled ? "text-[#C05A46]" : "text-[#2C2A29]"}`}>
+                      Akşam yemeği de istiyorum
+                    </div>
+                    <div className="text-[10px] text-[#8A8580]">Menüden akşam için ürün seçin</div>
+                  </div>
+                  <div className={`w-10 h-6 rounded-full transition-colors relative ${
+                    cart.dinnerEnabled ? "bg-[#C05A46]" : "bg-[#E5DFD3]"
+                  }`}>
+                    <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${
+                      cart.dinnerEnabled ? "left-5" : "left-1"
+                    }`} />
+                  </div>
+                </button>
+
+                {cart.dinnerEnabled && (
+                  <div className="mt-3 bg-white rounded-xl border border-[#E5DFD3] overflow-hidden">
+                    <div className="px-3 py-2 bg-[#2C2A29]">
+                      <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-white flex items-center gap-1.5">
+                        <Moon size={12} /> Akşam Yemeği Seçimi
+                      </div>
+                    </div>
+
+                    {/* Seçilen akşam ürünleri */}
+                    {cart.dinnerItems.length > 0 && (
+                      <div className="px-3 py-2 border-b border-[#E5DFD3] bg-[#C05A46]/5">
+                        <div className="text-[10px] uppercase tracking-[0.15em] font-bold text-[#C05A46] mb-1.5">Seçilenler</div>
+                        {cart.dinnerItems.map((di) => (
+                          <div key={di.id} className="flex items-center gap-2 py-1.5">
+                            <span className="flex-1 text-sm font-medium text-[#2C2A29] truncate">{di.name}</span>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => cart.updateDinnerQty(di.id, di.quantity - 1)} className="w-6 h-6 rounded-full bg-white border border-[#E5DFD3] grid place-items-center hover:bg-[#F2EBE3]"><Minus size={10} /></button>
+                              <span className="w-6 text-center text-xs font-bold">{di.quantity}</span>
+                              <button onClick={() => cart.updateDinnerQty(di.id, di.quantity + 1)} className="w-6 h-6 rounded-full bg-white border border-[#E5DFD3] grid place-items-center hover:bg-[#F2EBE3]"><Plus size={10} /></button>
+                            </div>
+                            <button onClick={() => cart.removeDinnerItem(di.id)} className="text-[#8A8580] hover:text-[#B93A32]"><Trash2 size={12} /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Menüden ekle */}
+                    <div className="px-3 py-2 max-h-48 overflow-y-auto">
+                      <div className="text-[10px] uppercase tracking-[0.15em] font-bold text-[#8A8580] mb-1.5">Menüden Ekle</div>
+                      {items
+                        .filter((m) => !cart.dinnerItems.some((di) => di.id === m.id))
+                        .map((m) => (
+                          <button
+                            key={m.id}
+                            onClick={() => cart.addDinnerItem(m)}
+                            className="w-full flex items-center gap-2 py-1.5 text-left hover:bg-[#F2EBE3] rounded px-1 transition-colors"
+                          >
+                            <Plus size={12} className="text-[#C05A46] shrink-0" />
+                            <span className="flex-1 text-sm text-[#2C2A29] truncate">{m.name}</span>
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {cart.items.length > 0 && (
               <div className="mt-5">
                 <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580]">Sipariş Notu</label>
@@ -136,11 +212,7 @@ export default function MenuPage() {
 
 function CartList() {
   const cart = useCart();
-  const groups = CATEGORY_ORDER
-    .map((cat) => ({ cat, items: cart.items.filter((i) => (i.category || "Ana Yemek") === cat) }))
-    .filter((g) => g.items.length > 0);
-  const others = cart.items.filter((i) => categoryRank(i.category || "Ana Yemek") === 999);
-  if (others.length) groups.push({ cat: "Diğer", items: others });
+  const groups = groupByCategory(cart.items);
 
   return (
     <div className="space-y-5">
@@ -171,11 +243,7 @@ function CartList() {
 
 function CategorizedMenu({ items }) {
   const sorted = sortByCategory(items);
-  const groups = CATEGORY_ORDER
-    .map((cat) => ({ cat, items: sorted.filter((i) => (i.category || "Ana Yemek") === cat) }))
-    .filter((g) => g.items.length > 0);
-  const others = sorted.filter((i) => categoryRank(i.category || "Ana Yemek") === 999);
-  if (others.length) groups.push({ cat: "Diğer", items: others });
+  const groups = groupByCategory(sorted);
 
   let idx = 0;
   return (

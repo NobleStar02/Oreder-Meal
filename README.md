@@ -1,83 +1,191 @@
-# Doyuran Güveç - Restoran Sipariş ve Yönetim Sistemi
+# Doyuran Güveç — Restoran Sipariş ve Yönetim Sistemi
 
-Bu proje, Doyuran Güveç restoranı için özel olarak geliştirilmiş, tamamen yerel veritabanı (PostgreSQL/SQLite) tabanlı, termal yazıcı entegrasyonuna sahip tam kapsamlı bir sipariş ve yönetim (POS) sistemidir. Sistem daha önce bulut bağımlı MongoDB altyapısından çıkarılmış olup, tamamen otonom ve **VPS/Coolify** üzerinde yayına alınmaya hazır hale getirilmiştir.
+Doyuran Güveç restoranı için özel olarak geliştirilmiş, tamamen yerel veritabanı (SQLite / PostgreSQL) tabanlı, **termal yazıcı entegrasyonuna** sahip tam kapsamlı bir sipariş ve yönetim (POS) sistemidir.
 
-## 🚀 Proje Mimarisi ve Teknoloji Yığını
+Sistem bulut bağımlılıklarından arındırılmış olup, tamamen otonom çalışır ve **VPS / Coolify** üzerinde yayına alınmaya hazırdır.
 
-### 1. Backend (API & Veritabanı)
-- **Dil & Çerçeve:** Python 3.11+, FastAPI
-- **Veritabanı ORM:** SQLAlchemy 2.0 (Asenkron destekli)
-- **Veritabanı Türü:** Varsayılan olarak SQLite (`doyuran_guvec.db`), üretim ortamı için PostgreSQL (`asyncpg` via SQLAlchemy) destekler. 
-- **Kimlik Doğrulama:** JWT (JSON Web Tokens) ve `bcrypt` ile şifreleme.
-- **Özellikler:** CRUD işlemleri, Analitik hesaplamaları (Günlük ciro, en çok satanlar vb.), RESTful API.
-- **Dosya Yükleme:** Ürün resimleri `backend/uploads` klasörüne yerel olarak kaydedilir.
+---
 
-### 2. Frontend (Kullanıcı & Yönetici Paneli)
-- **Kütüphane:** React (Create React App tabanlı)
-- **Stil & Tasarım:** TailwindCSS, Shadcn UI bileşenleri, Framer Motion (Animasyonlar)
-- **Routing:** React Router DOM
-- **Durum Yönetimi:** React Context API & LocalStorage
-- **Ağ İstekleri:** Axios (API iletişimi)
-- **Rol Tabanlı Erişim:** Müşteri sipariş ekranı ve Admin (Yönetim, Menü ekleme/çıkarma, İstatistikler) paneli.
+## 🚀 Proje Mimarisi
 
-### 3. Yazıcı Servisi (Printer Service)
-- **Dil:** Python 3.11+
-- **Kütüphaneler:** `pywin32` (Windows yazdırma API'si), `sqlalchemy`
-- **İşlev:** Arka planda çalışarak veritabanındaki "yeni" durumunda ve yazdırılmamış siparişleri tarar. Yeni siparişleri otomatik olarak ESC/POS formatında termal yazıcıya (Xprinter XP Q805K) gönderir.
+```
+Oreder-Meal/
+├── backend/                 # FastAPI sunucusu
+│   ├── server.py            # Ana API — tüm endpoint'ler tek dosyada
+│   ├── requirements.txt
+│   ├── .env                 # Ortam değişkenleri
+│   ├── doyuran_guvec.db     # SQLite veritabanı (otomatik oluşur)
+│   └── uploads/             # Dosya yükleme dizini
+│
+├── frontend/                # React (CRA + CRACO) istemci uygulaması
+│   ├── src/
+│   │   ├── lib/
+│   │   │   ├── api.js       # Axios client, ortak helper'lar, sabitler
+│   │   │   ├── auth.jsx     # AuthContext (JWT cookie tabanlı)
+│   │   │   ├── cart.jsx     # CartContext (LocalStorage ile persist)
+│   │   │   └── utils.js     # Tailwind cn() yardımcı fonksiyonu
+│   │   ├── components/
+│   │   │   ├── NavBar.jsx
+│   │   │   ├── EditOrderDialog.jsx
+│   │   │   └── ui/          # shadcn/ui bileşen kütüphanesi
+│   │   └── pages/
+│   │       ├── Landing.jsx
+│   │       ├── Login.jsx
+│   │       ├── Register.jsx
+│   │       ├── MenuPage.jsx
+│   │       ├── OrdersPage.jsx
+│   │       ├── PrintReceipt.jsx   # Termal fiş önizleme & tarayıcıdan yazdırma
+│   │       └── admin/
+│   │           ├── AdminLayout.jsx
+│   │           ├── AdminDashboard.jsx
+│   │           ├── AdminMenu.jsx
+│   │           ├── AdminOrders.jsx
+│   │           └── AdminAnalytics.jsx
+│   └── tailwind.config.js
+│
+└── printer_service/          # Otomatik termal yazıcı servisi
+    └── main.py               # Windows GDI tabanlı POS yazdırma
+```
+
+---
+
+## 🧰 Teknoloji Yığını
+
+### Backend
+| Bileşen | Teknoloji |
+|---|---|
+| Dil & Çerçeve | Python 3.11+, **FastAPI** |
+| Veritabanı ORM | SQLAlchemy 2.0 (Async) |
+| Veritabanı | SQLite (geliştirme) / PostgreSQL (üretim) |
+| Kimlik Doğrulama | JWT (`PyJWT`) + `bcrypt` |
+| Yaşam Döngüsü | Modern `lifespan` context manager |
+
+### Frontend
+| Bileşen | Teknoloji |
+|---|---|
+| Kütüphane | React 19 (CRA + CRACO) |
+| Stil | TailwindCSS 3, shadcn/ui (Radix tabanlı) |
+| Tipografi | Bricolage Grotesque, Manrope, JetBrains Mono |
+| Routing | React Router DOM v7 |
+| Durum Yönetimi | React Context API + LocalStorage |
+| API İstemcisi | Axios (cookie tabanlı withCredentials) |
+| Bildirimler | Sonner (toast) |
+| Grafikler | Recharts |
+
+### Yazıcı Servisi
+| Bileşen | Teknoloji |
+|---|---|
+| Dil | Python 3.11+ |
+| Yazdırma | Windows GDI (`pywin32` — `win32ui`, `win32print`) |
+| Font | Arial (Türkçe karakter desteği) |
+| Tetikleme | 3 sn aralıklarla DB polling |
+
+---
+
+## ✨ Özellikler
+
+### Müşteri (Firma) Tarafı
+- 📋 Günün menüsünü kategorilere ayrılmış görüntüleme
+- 🛒 Sepete ekleme, adet yönetimi, sipariş notu
+- 📝 Sipariş geçmişi ve detay görüntüleme
+- ✏️ "Yeni" durumdaki siparişleri düzenleme (revizyon)
+- 🖨️ Tarayıcıdan termal fiş önizleme & yazdırma
+
+### Yönetici (Admin) Tarafı
+- 📊 Dashboard — günlük sipariş akışı, en çok tercih edilen yemekler
+- 🍽️ Menü yönetimi — yemek ekleme/düzenleme/silme, tarih bazlı yayın
+- 📦 Sipariş yönetimi — durum güncelleme (Yeni → Hazırlanıyor → Tamamlandı / İptal)
+- 📈 Analitik — 7/30/90 günlük sipariş trendleri, firma sıralaması, yemek popülerliği
+- 🖨️ Termal yazıcıya doğrudan yazdırma
+
+### Yazıcı Servisi
+- 🔄 Otomatik — yeni siparişleri algılayıp termal yazıcıya gönderir
+- 📄 Kategorize fiş çıktısı (Çorba → Ana Yemek → Yan Yemek → İçecek → Tatlı)
+- ⚠️ Düzeltilmiş siparişler için "DÜZELTİLDİ" banner'ı
+- 👥 "X KİŞİLİK" — ana yemek adetine göre porsiyon gösterimi
 
 ---
 
 ## 🛠 Kurulum ve Çalıştırma
 
 ### Gereksinimler
-- Node.js (v18+)
-- Python (3.11+)
-- Termal Yazıcı (Windows sürücüsü kurulmuş olmalı)
+- **Node.js** v18+
+- **Python** 3.11+
+- **Termal Yazıcı** (opsiyonel — Windows sürücüsü kurulmuş olmalı)
 
-### 1. Backend'i Başlatmak
-Backend klasörüne gidin, kütüphaneleri kurun ve çalıştırın:
+### 1. Backend
+
 ```bash
 cd backend
 pip install -r requirements.txt
-pip install sqlalchemy aiosqlite asyncpg
 python -m uvicorn server:app --reload --port 8000
 ```
-*(Sunucu başlarken gerekli veritabanı tablolarını ve `admin@test.com` yöneticisini otomatik oluşturacaktır.)*
 
-### 2. Frontend'i Başlatmak
-Frontend klasörüne gidin ve React sunucusunu başlatın:
+> Sunucu başlarken veritabanı tablolarını ve `admin@test.com` yönetici hesabını otomatik oluşturur.
+
+### 2. Frontend
+
 ```bash
 cd frontend
 npm install
 npm start
 ```
-*(Tarayıcınızda `http://localhost:3000` adresinde açılacaktır.)*
 
-### 3. Yazıcı Servisini Başlatmak
-Yazıcınızın Windows'a kurulu olduğundan emin olun.
-`printer_service/main.py` içerisindeki `PRINTER_NAME` değişkenini yazıcınızın adına göre (örneğin `"XP-80C"`) güncelleyin.
+> Tarayıcıda `http://localhost:3000` adresinde açılır.
+
+### 3. Yazıcı Servisi (opsiyonel)
+
+`printer_service/main.py` içindeki `PRINTER_NAME` değişkenini yazıcınızın adına göre güncelleyin:
+
 ```bash
 cd printer_service
-pip install sqlalchemy
+pip install sqlalchemy pywin32 python-dotenv
 python main.py
 ```
-*(Terminali kapatmadığınız sürece arka planda yeni siparişleri dinlemeye devam edecektir.)*
+
+> Terminal açık kaldığı sürece yeni siparişleri otomatik dinler ve yazdırır.
 
 ---
 
-## ☁️ Üretim (Production) / Coolify Deployment
-Sistemi bir VPS üzerinde yayına alırken kodda hiçbir değişiklik yapmanıza gerek yoktur.
-Sadece sunucudaki (Coolify) ortam değişkenlerine (`.env`) PostgreSQL bilgilerinizi eklemeniz yeterlidir:
+## ☁️ Üretim Ortamı (Production)
+
+Sistemi VPS üzerinde yayına alırken kodda değişiklik gerekmez. Sadece `.env` dosyasına PostgreSQL bağlantı bilgilerinizi ekleyin:
+
 ```env
 DATABASE_URL=postgresql+asyncpg://kullanici:sifre@sunucu_ip:5432/doyuran_guvec
+JWT_SECRET=guclu-bir-secret-key
+ADMIN_EMAIL=admin@test.com
+ADMIN_PASSWORD=guclu-bir-sifre
 ```
-
-*Sistem otomatik olarak SQLite yerine bu veritabanına bağlanacak ve tabloları yaratacaktır.*
 
 ---
 
 ## 🔒 Varsayılan Giriş Bilgileri
-**E-posta:** `admin@test.com`
-**Şifre:** `admin123`
 
-Sistemi kullanmaya başlamak için bu bilgilerle giriş yapabilirsiniz.
+| Alan | Değer |
+|---|---|
+| E-posta | `admin@test.com` |
+| Şifre | `admin123` |
+
+---
+
+## 🔧 Kod Mimarisi ve Ortak Helper'lar
+
+Tekrar eden kod kalıpları `frontend/src/lib/api.js` içinde merkezi olarak yönetilir:
+
+| Helper | Açıklama |
+|---|---|
+| `groupByCategory(items)` | Sipariş/menü öğelerini kategorilere göre gruplar |
+| `sortByCategory(arr)` | Kategori sırasına göre sıralar |
+| `categoryRank(cat)` | Kategori öncelik sırasını döndürür |
+| `todayISO()` | Bugünün tarihini `YYYY-MM-DD` formatında döndürür |
+| `STATUS_LABELS` | Sipariş durumu etiketleri ve CSS sınıfları |
+| `formatDateTR(iso)` | ISO tarih → Türkçe format |
+| `formatTimeTR(iso)` | ISO saat → Türkçe format |
+| `formatApiErrorDetail(detail)` | API hata yanıtlarını kullanıcı dostu mesaja çevirir |
+
+---
+
+## 📜 Lisans
+
+Bu proje Doyuran Güveç Lokantası için özel olarak geliştirilmiştir.

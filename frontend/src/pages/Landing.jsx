@@ -40,7 +40,7 @@ export default function Landing() {
               )}
             </div>
             <div className="mt-10 flex flex-wrap gap-x-8 gap-y-3 text-sm text-[#5C5855]">
-              <div className="flex items-center gap-2"><Clock size={16} className="text-[#C05A46]" /> 11:30'a kadar sipariş</div>
+              <div className="flex items-center gap-2"><Clock size={16} className="text-[#C05A46]" /> Akşam yemeği seçeneği</div>
               <div className="flex items-center gap-2"><Printer size={16} className="text-[#C05A46]" /> Otomatik termal yazıcı</div>
               <div className="flex items-center gap-2"><ShieldCheck size={16} className="text-[#C05A46]" /> Firma bazlı geçmiş</div>
             </div>
@@ -49,19 +49,11 @@ export default function Landing() {
           <div className="lg:col-span-5 relative">
             <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-[#E5DFD3] aspect-[4/5]">
               <img
-                src="https://images.pexels.com/photos/6161666/pexels-photo-6161666.jpeg"
+                src="/hero-guvec.png"
                 alt="Sıcak güveç yemekleri"
                 className="w-full h-full object-cover"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#2C2A29]/60 via-transparent to-transparent" />
-              <div className="absolute bottom-6 left-6 right-6 text-white">
-                <div className="text-xs uppercase tracking-[0.25em] font-bold opacity-90">Bugünün Spesiyali</div>
-                <div className="font-heading text-2xl font-bold mt-1">Kuzu Güveç & Pilav</div>
-              </div>
-            </div>
-            <div className="absolute -bottom-6 -left-6 bg-white rounded-2xl shadow-lg border border-[#E5DFD3] p-4 hidden md:block">
-              <div className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580]">Bugün Sipariş</div>
-              <div className="font-heading text-3xl font-bold text-[#2C2A29] mt-1">42<span className="text-[#C05A46]">+</span></div>
+
             </div>
           </div>
         </div>

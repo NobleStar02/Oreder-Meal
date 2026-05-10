@@ -40,11 +40,6 @@ export function formatTimeTR(iso) {
   return d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
 }
 
-export function fileUrl(path) {
-  if (!path) return null;
-  return `${API}/files/${path}`;
-}
-
 export const CATEGORY_ORDER = ["Çorba", "Çorbalar", "Ana Yemek", "Yan Yemek", "Yan Lezzetler", "İçecek", "İçecekler", "Tatlı", "Tatlılar"];
 
 export function categoryRank(cat) {
@@ -63,3 +58,29 @@ export function sortByCategory(arr) {
     return (a.created_at || "").localeCompare(b.created_at || "");
   });
 }
+
+/**
+ * Groups items by their category, following CATEGORY_ORDER.
+ * Items not matching any known category go into "Diğer".
+ */
+export function groupByCategory(items) {
+  const groups = CATEGORY_ORDER
+    .map((cat) => ({ cat, items: items.filter((i) => (i.category || "Ana Yemek") === cat) }))
+    .filter((g) => g.items.length > 0);
+  const others = items.filter((i) => categoryRank(i.category || "Ana Yemek") === 999);
+  if (others.length) groups.push({ cat: "Diğer", items: others });
+  return groups;
+}
+
+/** Returns today's date as ISO string (YYYY-MM-DD) */
+export function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Shared order status label definitions */
+export const STATUS_LABELS = {
+  yeni: { label: "Yeni", cls: "bg-[#E8AA42]/15 text-[#9F7012] border-[#E8AA42]/30" },
+  hazirlaniyor: { label: "Hazırlanıyor", cls: "bg-[#4A7C9D]/15 text-[#2F587A] border-[#4A7C9D]/30" },
+  tamamlandi: { label: "Tamamlandı", cls: "bg-[#4A5D23]/15 text-[#3A4A1A] border-[#4A5D23]/30" },
+  iptal: { label: "İptal", cls: "bg-[#B93A32]/15 text-[#7A2520] border-[#B93A32]/30" },
+};

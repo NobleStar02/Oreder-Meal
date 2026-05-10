@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
-import { api, formatApiErrorDetail } from "../../lib/api";
+import { api, formatApiErrorDetail, todayISO } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import { Switch } from "../../components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "../../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../../components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Utensils } from "lucide-react";
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
 
 const CATEGORIES = ["Çorba", "Ana Yemek", "Yan Yemek", "İçecek", "Tatlı"];
 
@@ -23,10 +22,12 @@ export default function AdminMenu() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
+  const [catalog, setCatalog] = useState([]);
 
   const load = () => {
     setLoading(true);
     api.get(`/admin/menu?date=${date}`).then((r) => setItems(r.data)).finally(() => setLoading(false));
+    api.get(`/admin/catalog`).then((r) => setCatalog(r.data)).catch(console.error);
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [date]);
 
@@ -130,6 +131,31 @@ export default function AdminMenu() {
             <DialogTitle className="font-heading text-2xl">{editing ? "Yemeği Düzenle" : "Yeni Yemek Ekle"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {!editing && catalog.length > 0 && (
+              <div className="p-4 bg-[#F2EBE3]/50 rounded-lg border border-[#E5DFD3] mb-2">
+                <Label className="text-[#C05A46] font-bold">Yemek Havuzundan Seç (Hızlı Doldur)</Label>
+                <Select onValueChange={(val) => {
+                  const item = catalog.find(c => c.id === val);
+                  if (item) setForm({...form, name: item.name, description: item.description, category: item.category});
+                }}>
+                  <SelectTrigger className="mt-1 bg-white border-[#E5DFD3]">
+                    <SelectValue placeholder="Hazır şablonlardan birini seçin..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.map(cat => {
+                      const catItems = catalog.filter(c => c.category === cat);
+                      if (catItems.length === 0) return null;
+                      return (
+                        <SelectGroup key={cat}>
+                          <SelectLabel className="text-xs uppercase tracking-[0.1em] text-[#8A8580]">{cat}</SelectLabel>
+                          {catItems.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </SelectGroup>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label htmlFor="name">İsim *</Label>
               <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 rounded-lg border-[#E5DFD3]" data-testid="admin-menu-name-input" />

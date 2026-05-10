@@ -6,6 +6,7 @@ import uuid
 import logging
 import bcrypt
 import jwt
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
@@ -16,13 +17,18 @@ from pydantic import BaseModel, Field, EmailStr
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy import Column, String, Float, Boolean, Integer, ForeignKey, select, func, desc, and_
+from sqlalchemy import Column, String, Float, Boolean, Integer, ForeignKey, select, func, desc, and_, event
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # ========== Configuration ==========
-DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite+aiosqlite:///./doyuran_guvec.db')
+_raw_db_url = os.environ.get('DATABASE_URL', '')
+if _raw_db_url.startswith('postgresql'):
+    DATABASE_URL = _raw_db_url
+else:
+    # SQLite: her zaman mutlak yol kullan (CWD'den bagimsiz)
+    DATABASE_URL = f"sqlite+aiosqlite:///{ROOT_DIR / 'doyuran_guvec.db'}"
 JWT_SECRET = os.environ.get('JWT_SECRET', 'dev-secret-key')
 JWT_ALGORITHM = "HS256"
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@test.com')
@@ -38,6 +44,15 @@ logger = logging.getLogger(__name__)
 # ========== DB ==========
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+# SQLite: WAL modu + FK enforcement aç
+@event.listens_for(engine.sync_engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    if DATABASE_URL.startswith("sqlite"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 Base = declarative_base()
 
 async def get_db():
@@ -68,11 +83,19 @@ class MenuItem(Base):
     available_date = Column(String, index=True)
     created_at = Column(String)
 
+class DishCatalog(Base):
+    __tablename__ = 'dish_catalog'
+    id = Column(String, primary_key=True)
+    name = Column(String)
+    description = Column(String)
+    category = Column(String)
+    created_at = Column(String)
+
 class Order(Base):
     __tablename__ = 'orders'
     id = Column(String, primary_key=True)
     order_no = Column(Integer)
-    user_id = Column(String, index=True)
+    user_id = Column(String, ForeignKey('users.id'), index=True)
     company_name = Column(String)
     contact_name = Column(String)
     phone = Column(String)
@@ -86,6 +109,7 @@ class Order(Base):
     order_date = Column(String, index=True)
     created_at = Column(String)
     is_printed = Column(Boolean, default=False)
+    meal_time = Column(String, default="")
     
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan", lazy="joined")
 
@@ -184,7 +208,6 @@ class LoginIn(BaseModel):
 class MenuItemIn(BaseModel):
     name: str
     description: Optional[str] = ""
-    price: float = 0.0
     category: Optional[str] = "Ana Yemek"
     available: bool = True
     available_date: Optional[str] = None
@@ -197,6 +220,16 @@ class MenuItemUpdate(BaseModel):
     available: Optional[bool] = None
     available_date: Optional[str] = None
 
+class DishCatalogIn(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    category: Optional[str] = "Ana Yemek"
+
+class DishCatalogUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+
 class OrderItemIn(BaseModel):
     menu_item_id: str
     quantity: int = Field(ge=1)
@@ -204,6 +237,7 @@ class OrderItemIn(BaseModel):
 class OrderIn(BaseModel):
     items: List[OrderItemIn]
     note: Optional[str] = ""
+    meal_time: Optional[str] = ""
 
 CATEGORY_ORDER = ["Çorba", "Ana Yemek", "Yan Yemek", "İçecek", "Tatlı"]
 
@@ -216,8 +250,59 @@ def _category_rank(cat: str) -> int:
 def today_iso() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 
+# ========== Lifespan ==========
+@asynccontextmanager
+async def lifespan(app):
+    # Startup
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        # Auto-migrate: add meal_time column if missing
+        if DATABASE_URL.startswith("sqlite"):
+            try:
+                await conn.execute(
+                    __import__('sqlalchemy').text("ALTER TABLE orders ADD COLUMN meal_time TEXT DEFAULT ''")
+                )
+                logger.info("Migration: meal_time column added to orders table.")
+            except Exception:
+                pass  # Column already exists
+            # Clean up legacy 'Öğle' values
+            try:
+                await conn.execute(
+                    __import__('sqlalchemy').text("UPDATE orders SET meal_time = '' WHERE meal_time = 'Öğle'")
+                )
+            except Exception:
+                pass
+        
+    async with AsyncSessionLocal() as session:
+        res = await session.execute(select(User).where(User.email == ADMIN_EMAIL.lower()))
+        existing = res.scalars().first()
+        if not existing:
+            u = User(
+                id=str(uuid.uuid4()),
+                email=ADMIN_EMAIL.lower(),
+                password_hash=hash_password(ADMIN_PASSWORD),
+                role="admin",
+                company_name="Doyuran Güveç Lokantası",
+                contact_name="Yönetici",
+                phone="",
+                address="",
+                created_at=datetime.now(timezone.utc).isoformat()
+            )
+            session.add(u)
+            await session.commit()
+            logger.info("Admin user seeded in SQL DB.")
+        elif not verify_password(ADMIN_PASSWORD, existing.password_hash):
+            existing.password_hash = hash_password(ADMIN_PASSWORD)
+            await session.commit()
+            logger.info("Admin password updated.")
+    
+    yield
+    
+    # Shutdown
+    await engine.dispose()
+
 # ========== App ==========
-app = FastAPI(title="Doyuran Güveç API")
+app = FastAPI(title="Doyuran Güveç API", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 # ---------- Auth Routes ----------
@@ -286,7 +371,7 @@ async def menu_today(db: AsyncSession = Depends(get_db)):
     today = today_iso()
     res = await db.execute(select(MenuItem).where(MenuItem.available == True, MenuItem.available_date == today))
     items = res.scalars().all()
-    out = [{"id": i.id, "name": i.name, "description": i.description, "price": i.price, 
+    out = [{"id": i.id, "name": i.name, "description": i.description,
             "category": i.category, "available": i.available, "available_date": i.available_date} for i in items]
     out.sort(key=lambda x: _category_rank(x.get("category", "")))
     return out
@@ -298,7 +383,7 @@ async def admin_list_menu(date: Optional[str] = None, user: dict = Depends(requi
         query = query.where(MenuItem.available_date == date)
     res = await db.execute(query)
     items = res.scalars().all()
-    out = [{"id": i.id, "name": i.name, "description": i.description, "price": i.price, 
+    out = [{"id": i.id, "name": i.name, "description": i.description,
             "category": i.category, "available": i.available, "available_date": i.available_date} for i in items]
     out.sort(key=lambda x: _category_rank(x.get("category", "")))
     return out
@@ -311,7 +396,7 @@ async def admin_create_menu(payload: MenuItemIn, user: dict = Depends(require_ad
         id=str(uuid.uuid4()),
         name=payload.name,
         description=payload.description or "",
-        price=float(payload.price),
+        price=0.0,
         category=payload.category or "Ana Yemek",
         available=payload.available,
         available_date=new_date,
@@ -325,7 +410,7 @@ async def admin_create_menu(payload: MenuItemIn, user: dict = Depends(require_ad
         o.available = False
         
     await db.commit()
-    return {"id": item.id, "name": item.name, "description": item.description, "price": item.price, "category": item.category, "available": item.available, "available_date": item.available_date}
+    return {"id": item.id, "name": item.name, "description": item.description, "category": item.category, "available": item.available, "available_date": item.available_date}
 
 @api_router.put("/admin/menu/{item_id}")
 async def admin_update_menu(item_id: str, payload: MenuItemUpdate, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
@@ -339,7 +424,7 @@ async def admin_update_menu(item_id: str, payload: MenuItemUpdate, user: dict = 
             setattr(item, k, v)
             
     await db.commit()
-    return {"id": item.id, "name": item.name, "description": item.description, "price": item.price, "category": item.category, "available": item.available, "available_date": item.available_date}
+    return {"id": item.id, "name": item.name, "description": item.description, "category": item.category, "available": item.available, "available_date": item.available_date}
 
 @api_router.delete("/admin/menu/{item_id}")
 async def admin_delete_menu(item_id: str, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
@@ -351,17 +436,60 @@ async def admin_delete_menu(item_id: str, user: dict = Depends(require_admin), d
     await db.commit()
     return {"ok": True}
 
+# ---------- Dish Catalog Routes ----------
+@api_router.get("/admin/catalog")
+async def admin_get_catalog(user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(DishCatalog).order_by(DishCatalog.name))
+    items = res.scalars().all()
+    return [{"id": i.id, "name": i.name, "description": i.description, "category": i.category} for i in items]
+
+@api_router.post("/admin/catalog")
+async def admin_add_catalog(payload: DishCatalogIn, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    item = DishCatalog(
+        id=uuid.uuid4().hex,
+        name=payload.name,
+        description=payload.description,
+        category=payload.category,
+        created_at=datetime.now(timezone.utc).isoformat()
+    )
+    db.add(item)
+    await db.commit()
+    return {"id": item.id, "name": item.name, "description": item.description, "category": item.category}
+
+@api_router.put("/admin/catalog/{item_id}")
+async def admin_update_catalog(item_id: str, payload: DishCatalogUpdate, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(DishCatalog).where(DishCatalog.id == item_id))
+    item = res.scalars().first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+    for k, v in payload.model_dump().items():
+        if v is not None:
+            setattr(item, k, v)
+    await db.commit()
+    return {"id": item.id, "name": item.name, "description": item.description, "category": item.category}
+
+@api_router.delete("/admin/catalog/{item_id}")
+async def admin_delete_catalog(item_id: str, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(DishCatalog).where(DishCatalog.id == item_id))
+    item = res.scalars().first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+    await db.delete(item)
+    await db.commit()
+    return {"ok": True}
+
 # ---------- Order Routes ----------
 def _format_order(o: Order) -> dict:
     return {
         "id": o.id, "order_no": o.order_no, "user_id": o.user_id,
         "company_name": o.company_name, "contact_name": o.contact_name,
-        "phone": o.phone, "address": o.address, "total": o.total,
+        "phone": o.phone, "address": o.address,
         "note": o.note, "status": o.status, "is_revised": o.is_revised,
         "revision_count": o.revision_count, "last_revised_at": o.last_revised_at,
         "order_date": o.order_date, "created_at": o.created_at,
+        "meal_time": o.meal_time or "",
         "items": [
-            {"menu_item_id": i.menu_item_id, "name": i.name, "price": i.price, "category": i.category, "quantity": i.quantity, "line_total": i.line_total}
+            {"menu_item_id": i.menu_item_id, "name": i.name, "category": i.category, "quantity": i.quantity}
             for i in o.items
         ]
     }
@@ -421,6 +549,7 @@ async def place_order(payload: OrderIn, user: dict = Depends(get_current_user), 
         revision_count=0,
         order_date=today,
         created_at=datetime.now(timezone.utc).isoformat(),
+        meal_time=payload.meal_time or "",
         items=order_items
     )
     
@@ -476,6 +605,7 @@ async def update_own_order(order_id: str, payload: OrderIn, user: dict = Depends
     
     order.total = round(total, 2)
     order.note = payload.note or ""
+    order.meal_time = payload.meal_time or order.meal_time or ""
     order.is_revised = True
     order.revision_count = (order.revision_count or 0) + 1
     order.last_revised_at = datetime.now(timezone.utc).isoformat()
@@ -502,6 +632,151 @@ async def admin_orders(date: Optional[str] = None, status: Optional[str] = None,
     res = await db.execute(query)
     return [_format_order(o) for o in res.scalars().unique().all()]
 
+@api_router.get("/admin/daily-summary")
+async def admin_daily_summary(date: Optional[str] = None, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Gün içinde firma bazlı kaç kişilik yemek (Ana Yemek sayısı)."""
+    import re
+    target_date = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    query = select(Order).where(Order.order_date == target_date, Order.status != "iptal")
+    res = await db.execute(query)
+    orders = res.scalars().unique().all()
+    
+    # Kategori tespiti için menüyü çek (akşam yemeklerinde category bilgisi string içinde gizli)
+    menu_res = await db.execute(select(MenuItem))
+    menu_items_map = {mi.name.strip().lower(): mi.category for mi in menu_res.scalars().all()}
+    
+    # Tarih formatı: DD.MM.YYYY
+    try:
+        dt = datetime.strptime(target_date, "%Y-%m-%d")
+        display_date = dt.strftime("%d.%m.%Y")
+    except Exception:
+        display_date = target_date
+    
+    summary = {}
+    for o in orders:
+        name = o.company_name or "Bilinmeyen"
+        if name not in summary:
+            summary[name] = {"company": name, "lunch_qty": 0, "dinner_qty": 0, "total": 0, "dinner_items": [], "order_count": 0}
+        
+        s = summary[name]
+        s["order_count"] += 1
+        
+        # Öğle kişi sayısı = Ana Yemek kategorisindeki ürünlerin toplam adedi
+        ana_yemek_lunch = sum(i.quantity or 1 for i in o.items if (i.category or "Ana Yemek") == "Ana Yemek")
+        s["lunch_qty"] += ana_yemek_lunch
+        
+        # Akşam yemekleri (meal_time alanından parse et)
+        mt = o.meal_time or ""
+        if mt and mt != "Öğle":
+            for part in mt.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                m = re.match(r'^(.+?)\s+x(\d+)$', part)
+                if m:
+                    item_name = m.group(1).strip()
+                    qty = int(m.group(2))
+                else:
+                    item_name = part
+                    qty = 1
+                    
+                cat = menu_items_map.get(item_name.lower())
+                # Eğer kategori Ana Yemek ise kişi sayısına ekle
+                if cat == "Ana Yemek":
+                    s["dinner_qty"] += qty
+                
+                s["dinner_items"].append(part)
+        
+        s["total"] = s["lunch_qty"] + s["dinner_qty"]
+    
+    result = sorted(summary.values(), key=lambda x: x["total"], reverse=True)
+    grand_lunch = sum(s["lunch_qty"] for s in result)
+    grand_dinner = sum(s["dinner_qty"] for s in result)
+    return {
+        "date": display_date,
+        "companies": result,
+        "grand_total": {"lunch": grand_lunch, "dinner": grand_dinner, "total": grand_lunch + grand_dinner}
+    }
+
+@api_router.post("/admin/daily-summary/print")
+async def admin_print_daily_summary(date: Optional[str] = None, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Günlük özeti termal yazıcıda yazdır."""
+    import re as _re
+    target_date = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    query = select(Order).where(Order.order_date == target_date, Order.status != "iptal")
+    res = await db.execute(query)
+    orders = res.scalars().unique().all()
+    
+    # Kategori tespiti için menüyü çek
+    menu_res = await db.execute(select(MenuItem))
+    menu_items_map = {mi.name.strip().lower(): mi.category for mi in menu_res.scalars().all()}
+    
+    # Tarih formatı: DD.MM.YYYY
+    try:
+        dt = datetime.strptime(target_date, "%Y-%m-%d")
+        display_date = dt.strftime("%d.%m.%Y")
+    except Exception:
+        display_date = target_date
+    
+    summary = {}
+    for o in orders:
+        name = o.company_name or "Bilinmeyen"
+        if name not in summary:
+            summary[name] = {"company": name, "lunch_qty": 0, "dinner_qty": 0, "total": 0, "dinner_items": [], "order_count": 0}
+        s = summary[name]
+        s["order_count"] += 1
+        
+        # Öğle kişi sayısı = Ana Yemek kategorisindeki ürünlerin toplam adedi
+        ana_yemek_lunch = sum(i.quantity or 1 for i in o.items if (i.category or "Ana Yemek") == "Ana Yemek")
+        s["lunch_qty"] += ana_yemek_lunch
+        
+        mt = o.meal_time or ""
+        if mt and mt != "Öğle":
+            for part in mt.split(","):
+                part = part.strip()
+                if not part: continue
+                m = _re.match(r'^(.+?)\s+x(\d+)$', part)
+                if m:
+                    item_name = m.group(1).strip()
+                    qty = int(m.group(2))
+                else:
+                    item_name = part
+                    qty = 1
+                
+                cat = menu_items_map.get(item_name.lower())
+                # Eğer kategori Ana Yemek ise kişi sayısına ekle
+                if cat == "Ana Yemek":
+                    s["dinner_qty"] += qty
+                    
+                s["dinner_items"].append(part)
+                
+        s["total"] = s["lunch_qty"] + s["dinner_qty"]
+    
+    result = sorted(summary.values(), key=lambda x: x["total"], reverse=True)
+    grand_lunch = sum(s["lunch_qty"] for s in result)
+    grand_dinner = sum(s["dinner_qty"] for s in result)
+    summary_data = {
+        "date": display_date,
+        "companies": result,
+        "grand_total": {"lunch": grand_lunch, "dinner": grand_dinner, "total": grand_lunch + grand_dinner}
+    }
+    
+    # Printer service'i import et ve yazdır
+    try:
+        import sys, importlib
+        printer_path = str(Path(__file__).parent.parent / "printer_service")
+        if printer_path not in sys.path:
+            sys.path.insert(0, printer_path)
+        printer_mod = importlib.import_module("main")
+        importlib.reload(printer_mod)
+        success = printer_mod.print_summary_receipt(summary_data, printer_mod.PRINTER_NAME)
+        if success:
+            return {"status": "ok", "message": "Özet fişi yazdırıldı"}
+        else:
+            raise HTTPException(status_code=500, detail="Yazıcı hatası")
+    except Exception as e:
+        logger.error(f"Özet fişi yazdırma hatası: {e}")
+        raise HTTPException(status_code=500, detail=f"Yazdırma hatası: {str(e)}")
 @api_router.get("/admin/orders/{order_id}")
 async def admin_order_detail(order_id: str, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(Order).where(Order.id == order_id))
@@ -537,84 +812,48 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user), db: A
 async def analytics_summary(days: int = 7, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     start = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
     
-    # Total Revenue & Orders by Date
+    # Orders by Date
     daily_res = await db.execute(
-        select(Order.order_date, func.sum(Order.total), func.count(Order.id))
+        select(Order.order_date, func.count(Order.id))
         .where(Order.order_date >= start, Order.status != "iptal")
         .group_by(Order.order_date)
         .order_by(Order.order_date)
     )
     daily_out = []
-    total_rev = 0
     total_ords = 0
     for row in daily_res.all():
-        r = row[1] or 0
-        daily_out.append({"date": row[0], "revenue": round(r, 2), "orders": row[2]})
-        total_rev += r
-        total_ords += row[2]
+        daily_out.append({"date": row[0], "orders": row[1]})
+        total_ords += row[1]
 
-    # Top items
+    # Top items by quantity
     items_res = await db.execute(
-        select(OrderItem.name, func.sum(OrderItem.quantity), func.sum(OrderItem.line_total))
+        select(OrderItem.name, func.sum(OrderItem.quantity))
         .join(Order)
         .where(Order.order_date >= start, Order.status != "iptal")
         .group_by(OrderItem.name)
         .order_by(desc(func.sum(OrderItem.quantity)))
         .limit(10)
     )
-    top_out = [{"name": row[0], "quantity": row[1], "revenue": round(row[2] or 0, 2)} for row in items_res.all()]
+    top_out = [{"name": row[0], "quantity": row[1]} for row in items_res.all()]
 
-    # Top companies
+    # Top companies by order count
     comp_res = await db.execute(
-        select(Order.company_name, func.count(Order.id), func.sum(Order.total))
+        select(Order.company_name, func.count(Order.id))
         .where(Order.order_date >= start, Order.status != "iptal")
         .group_by(Order.company_name)
-        .order_by(desc(func.sum(Order.total)))
+        .order_by(desc(func.count(Order.id)))
         .limit(10)
     )
-    comp_out = [{"name": row[0], "orders": row[1], "revenue": round(row[2] or 0, 2)} for row in comp_res.all()]
+    comp_out = [{"name": row[0], "orders": row[1]} for row in comp_res.all()]
 
     return {
         "range_days": days,
-        "total_revenue": round(total_rev, 2),
         "total_orders": total_ords,
         "daily": daily_out,
         "top_items": top_out,
         "top_companies": comp_out,
     }
 
-# ---------- Startup ----------
-@app.on_event("startup")
-async def startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        
-    async with AsyncSessionLocal() as session:
-        res = await session.execute(select(User).where(User.email == ADMIN_EMAIL.lower()))
-        existing = res.scalars().first()
-        if not existing:
-            u = User(
-                id=str(uuid.uuid4()),
-                email=ADMIN_EMAIL.lower(),
-                password_hash=hash_password(ADMIN_PASSWORD),
-                role="admin",
-                company_name="Doyuran Güveç Lokantası",
-                contact_name="Yönetici",
-                phone="",
-                address="",
-                created_at=datetime.now(timezone.utc).isoformat()
-            )
-            session.add(u)
-            await session.commit()
-            logger.info("Admin user seeded in SQL DB.")
-        elif not verify_password(ADMIN_PASSWORD, existing.password_hash):
-            existing.password_hash = hash_password(ADMIN_PASSWORD)
-            await session.commit()
-            logger.info("Admin password updated.")
-
-@app.on_event("shutdown")
-async def shutdown():
-    await engine.dispose()
 
 # Mount router & CORS
 app.include_router(api_router)

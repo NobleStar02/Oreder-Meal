@@ -1,18 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, formatDateTR, formatTimeTR, CATEGORY_ORDER, categoryRank } from "../lib/api";
+import { api, formatDateTR, formatTimeTR, groupByCategory, STATUS_LABELS } from "../lib/api";
 import NavBar from "../components/NavBar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import EditOrderDialog from "../components/EditOrderDialog";
 import { Printer, ChevronDown, ChevronUp, Clock, Pencil, AlertTriangle } from "lucide-react";
-
-const STATUS_LABELS = {
-  yeni: { label: "Yeni", cls: "bg-[#E8AA42]/15 text-[#9F7012] border-[#E8AA42]/30" },
-  hazirlaniyor: { label: "Hazırlanıyor", cls: "bg-[#4A7C9D]/15 text-[#2F587A] border-[#4A7C9D]/30" },
-  tamamlandi: { label: "Tamamlandı", cls: "bg-[#4A5D23]/15 text-[#3A4A1A] border-[#4A5D23]/30" },
-  iptal: { label: "İptal", cls: "bg-[#B93A32]/15 text-[#7A2520] border-[#B93A32]/30" },
-};
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
@@ -56,6 +49,11 @@ export default function OrdersPage() {
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-[#2C2A29] flex items-center gap-2 flex-wrap">
                         {formatDateTR(o.created_at)} · {formatTimeTR(o.created_at)}
+                        {o.meal_time && o.meal_time !== "Öğle" && (
+                          <span className="inline-flex items-center gap-1 bg-[#2C2A29] text-white text-[10px] uppercase tracking-[0.15em] font-bold px-2 py-0.5 rounded-full">
+                            🌙 Akşam Yemeği Var
+                          </span>
+                        )}
                         {o.is_revised && (
                           <span className="inline-flex items-center gap-1 bg-[#E8AA42]/15 text-[#9F7012] text-[10px] uppercase tracking-[0.15em] font-bold px-2 py-0.5 rounded-full border border-[#E8AA42]/30">
                             <AlertTriangle size={10} /> Düzeltildi ×{o.revision_count}
@@ -80,6 +78,11 @@ export default function OrdersPage() {
                               <div className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580] mb-2">Not</div>
                               <div className="text-sm text-[#2C2A29] mb-4">{o.note}</div>
                             </>
+                          )}
+                          {o.meal_time && o.meal_time !== "Öğle" && (
+                            <div className="bg-[#2C2A29] rounded-lg px-3 py-2 text-sm text-white mb-4">
+                              <span className="font-bold">🌙 Akşam Yemeği:</span> {o.meal_time}
+                            </div>
                           )}
                           <div className="flex flex-wrap items-center gap-3">
                             <Link to={`/print/${o.id}`} className="inline-flex items-center gap-2 text-sm text-[#C05A46] font-semibold hover:underline" data-testid={`order-print-${o.id}`}>
@@ -123,11 +126,7 @@ export default function OrdersPage() {
 }
 
 function CategorizedItemList({ items }) {
-  const groups = CATEGORY_ORDER
-    .map((cat) => ({ cat, items: items.filter((i) => (i.category || "Ana Yemek") === cat) }))
-    .filter((g) => g.items.length > 0);
-  const others = items.filter((i) => categoryRank(i.category || "Ana Yemek") === 999);
-  if (others.length) groups.push({ cat: "Diğer", items: others });
+  const groups = groupByCategory(items);
   return (
     <div className="space-y-3">
       {groups.map(({ cat, items: catItems }) => (

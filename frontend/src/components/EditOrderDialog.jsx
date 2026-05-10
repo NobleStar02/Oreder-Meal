@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, CATEGORY_ORDER, categoryRank, formatApiErrorDetail } from "../lib/api";
+import { api, CATEGORY_ORDER, categoryRank, formatApiErrorDetail, groupByCategory } from "../lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
-import { Plus, Minus, Trash2, Utensils } from "lucide-react";
+import { Plus, Minus, Trash2, Utensils, Moon } from "lucide-react";
 import { toast } from "sonner";
 
 /**
@@ -12,8 +12,10 @@ import { toast } from "sonner";
  */
 export default function EditOrderDialog({ open, onOpenChange, order, onSaved }) {
   const [menu, setMenu] = useState([]);
-  const [items, setItems] = useState([]); // { id, name, category, quantity, price }
+  const [items, setItems] = useState([]); // { id, name, category, quantity }
   const [note, setNote] = useState("");
+  const [dinnerEnabled, setDinnerEnabled] = useState(false);
+  const [dinnerItemIds, setDinnerItemIds] = useState(new Set());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -22,10 +24,24 @@ export default function EditOrderDialog({ open, onOpenChange, order, onSaved }) 
       id: i.menu_item_id,
       name: i.name,
       category: i.category || "Ana Yemek",
-      price: i.price,
       quantity: i.quantity,
     })));
     setNote(order.note || "");
+    // meal_time dolu ise akşam yemeği isteği var demektir
+    const mt = order.meal_time || "";
+    if (mt) {
+      setDinnerEnabled(true);
+      // Eşleşen item ID'lerini bul
+      const names = mt.split(",").map(s => s.replace(/\s*x\d+$/, "").trim().toLowerCase());
+      const ids = new Set();
+      order.items.forEach(i => {
+        if (names.includes((i.name || "").toLowerCase())) ids.add(i.menu_item_id);
+      });
+      setDinnerItemIds(ids);
+    } else {
+      setDinnerEnabled(false);
+      setDinnerItemIds(new Set());
+    }
     api.get("/menu/today").then((r) => setMenu(r.data)).catch(() => setMenu([]));
   }, [open, order]);
 
@@ -41,7 +57,7 @@ export default function EditOrderDialog({ open, onOpenChange, order, onSaved }) 
     setItems((prev) => {
       const ex = prev.find((i) => i.id === m.id);
       if (ex) return prev.map((i) => i.id === m.id ? { ...i, quantity: i.quantity + 1 } : i);
-      return [...prev, { id: m.id, name: m.name, category: m.category || "Ana Yemek", price: m.price || 0, quantity: 1 }];
+      return [...prev, { id: m.id, name: m.name, category: m.category || "Ana Yemek", quantity: 1 }];
     });
   };
 
@@ -54,9 +70,14 @@ export default function EditOrderDialog({ open, onOpenChange, order, onSaved }) 
     }
     setSaving(true);
     try {
+      // Akşam yemeği özetini oluştur
+      const dinnerSummary = dinnerEnabled && dinnerItemIds.size > 0
+        ? items.filter(i => dinnerItemIds.has(i.id)).map(i => `${i.name} x${i.quantity}`).join(", ")
+        : "";
       await api.put(`/orders/${order.id}`, {
         items: items.map((i) => ({ menu_item_id: i.id, quantity: i.quantity })),
         note,
+        meal_time: dinnerSummary,
       });
       toast.success("Sipariş güncellendi. Mutfağa DÜZELTİLDİ notuyla iletiliyor.");
       onOpenChange(false);
@@ -68,14 +89,7 @@ export default function EditOrderDialog({ open, onOpenChange, order, onSaved }) 
     }
   };
 
-  const groupedItems = useMemo(() => {
-    const groups = CATEGORY_ORDER
-      .map((cat) => ({ cat, items: items.filter((i) => (i.category || "Ana Yemek") === cat) }))
-      .filter((g) => g.items.length > 0);
-    const others = items.filter((i) => categoryRank(i.category || "Ana Yemek") === 999);
-    if (others.length) groups.push({ cat: "Diğer", items: others });
-    return groups;
-  }, [items]);
+  const groupedItems = useMemo(() => groupByCategory(items), [items]);
 
   const groupedMenu = useMemo(() => {
     const inCart = new Set(items.map((i) => i.id));
@@ -161,6 +175,55 @@ export default function EditOrderDialog({ open, onOpenChange, order, onSaved }) 
             <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#C05A46] mb-2 block">Sipariş Notu</label>
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} className="rounded-lg border-[#E5DFD3]" placeholder="Özel istekler…" data-testid="edit-order-note" />
           </div>
+
+          {/* Akşam Yemeği */}
+          {items.length > 0 && (
+            <div>
+              <button
+                onClick={() => {
+                  setDinnerEnabled(!dinnerEnabled);
+                  if (dinnerEnabled) setDinnerItemIds(new Set());
+                }}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                  dinnerEnabled
+                    ? "border-[#C05A46] bg-[#C05A46]/10"
+                    : "border-[#E5DFD3] bg-white hover:border-[#C05A46]/40"
+                }`}
+              >
+                <Moon size={16} className={dinnerEnabled ? "text-[#C05A46]" : "text-[#8A8580]"} />
+                <span className={`flex-1 text-left text-sm font-semibold ${dinnerEnabled ? "text-[#C05A46]" : "text-[#2C2A29]"}`}>
+                  Akşam yemeği de istiyorum
+                </span>
+                <div className={`w-10 h-6 rounded-full transition-colors relative ${dinnerEnabled ? "bg-[#C05A46]" : "bg-[#E5DFD3]"}`}>
+                  <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${dinnerEnabled ? "left-5" : "left-1"}`} />
+                </div>
+              </button>
+              {dinnerEnabled && (
+                <div className="mt-2 bg-[#F9F6F0] rounded-xl border border-[#E5DFD3] p-3 space-y-1.5">
+                  <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#8A8580] mb-1">Akşama hangi yemekleri istiyorsunuz?</div>
+                  {items.map((i) => (
+                    <label key={i.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${dinnerItemIds.has(i.id) ? "bg-[#C05A46]/10" : "hover:bg-[#F2EBE3]"}`}>
+                      <input
+                        type="checkbox"
+                        checked={dinnerItemIds.has(i.id)}
+                        onChange={() => {
+                          setDinnerItemIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(i.id)) next.delete(i.id);
+                            else next.add(i.id);
+                            return next;
+                          });
+                        }}
+                        className="w-4 h-4 rounded border-[#E5DFD3] text-[#C05A46] focus:ring-[#C05A46]"
+                      />
+                      <span className="flex-1 text-sm font-medium text-[#2C2A29]">{i.name}</span>
+                      <span className="text-xs text-[#8A8580]">x{i.quantity}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter className="border-t border-[#E5DFD3] pt-4">

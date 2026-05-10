@@ -1,18 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, formatDateTR, formatTimeTR, CATEGORY_ORDER, categoryRank } from "../lib/api";
+import { api, formatDateTR, formatTimeTR, groupByCategory } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Printer, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
-
-function groupByCategory(items) {
-  const groups = CATEGORY_ORDER
-    .map((cat) => ({ cat, items: items.filter((i) => (i.category || "Ana Yemek") === cat) }))
-    .filter((g) => g.items.length > 0);
-  const others = items.filter((i) => categoryRank(i.category || "Ana Yemek") === 999);
-  if (others.length) groups.push({ cat: "Diğer", items: others });
-  return groups;
-}
 
 export default function PrintReceipt() {
   const { orderId } = useParams();
