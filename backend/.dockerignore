@@ -1,9 +1,0 @@
-__pycache__
-venv
-.venv
-*.db
-*.db-shm
-*.db-wal
-.env
-uploads/*
-tests
