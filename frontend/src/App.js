@@ -14,6 +14,7 @@ import AdminMenu from "./pages/admin/AdminMenu";
 import AdminOrders from "./pages/admin/AdminOrders";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
 import AdminCatalog from "./pages/admin/AdminCatalog";
+import AdminManualOrder from "./pages/admin/AdminManualOrder";
 import PrintReceipt from "./pages/PrintReceipt";
 
 function ProtectedRoute({ children, roles }) {
@@ -41,6 +42,7 @@ function App() {
               <Route path="menu" element={<AdminMenu />} />
               <Route path="catalog" element={<AdminCatalog />} />
               <Route path="orders" element={<AdminOrders />} />
+              <Route path="manual-order" element={<AdminManualOrder />} />
               <Route path="analytics" element={<AdminAnalytics />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

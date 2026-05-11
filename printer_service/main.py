@@ -55,6 +55,7 @@ class Order(Base):
     created_at = Column(String)
     is_printed = Column(Boolean)
     meal_time = Column(String)
+    is_manual = Column(Boolean, default=False)
     
     items = relationship("OrderItem", back_populates="order")
 
@@ -209,6 +210,115 @@ def print_summary_receipt(summary_data, printer_name):
         return False
 
 
+def print_manual_summary_receipt(summary_data, printer_name):
+    """Manuel sipariş gün sonu özet fişi yazdır."""
+    if not win32print:
+        print("SIMULASYON: win32print kurulu degil.")
+        return True
+
+    try:
+        import win32ui
+        import win32con
+
+        hDC = win32ui.CreateDC()
+        hDC.CreatePrinterDC(printer_name)
+        hDC.SetMapMode(win32con.MM_TEXT)
+        horzres = hDC.GetDeviceCaps(win32con.HORZRES)
+
+        # Fontlar
+        def make_font(size, bold=False, name="Arial"):
+            return win32ui.CreateFont({
+                "name": name, "height": size,
+                "weight": 700 if bold else 400,
+            })
+
+        font_bold = make_font(40, bold=True)
+        font_normal = make_font(28)
+        font_small = make_font(24)
+        font_small_bold = make_font(24, bold=True)
+        font_large = make_font(48, bold=True)
+
+        def draw_centered(text, y, font):
+            hDC.SelectObject(font)
+            w, h = hDC.GetTextExtent(text)
+            hDC.TextOut((horzres - w) // 2, y, text)
+            return y + h + 2
+
+        def draw_left(text, y, font):
+            hDC.SelectObject(font)
+            _, h = hDC.GetTextExtent(text)
+            hDC.TextOut(10, y, text)
+            return y + h + 2
+
+        def draw_left_right(left, right, y, font):
+            hDC.SelectObject(font)
+            _, h = hDC.GetTextExtent(left)
+            wr, _ = hDC.GetTextExtent(right)
+            hDC.TextOut(10, y, left)
+            hDC.TextOut(horzres - wr - 10, y, right)
+            return y + h + 2
+
+        def draw_dashed(y):
+            hDC.SelectObject(font_small)
+            line = "-" * 48
+            _, h = hDC.GetTextExtent(line)
+            hDC.TextOut(10, y, line)
+            return y + h + 2
+
+        hDC.StartDoc("ManuelOzet")
+        hDC.StartPage()
+
+        y = 10
+        y = draw_centered("DOYURAN GÜVEÇ LOKANTASI", y, font_bold)
+        y = draw_centered("MANUEL SİPARİŞ ÖZETİ", y, font_small_bold)
+        y += 5
+        y = draw_centered(summary_data.get("date", ""), y, font_small)
+        y += 5
+        y = draw_dashed(y)
+
+        companies = summary_data.get("companies", [])
+        for c in companies:
+            name = c.get("company", "")
+            lunch = c.get("lunch_qty", 0)
+            dinner = c.get("dinner_qty", 0)
+            total = c.get("total", 0)
+
+            y = draw_left_right(name[:30], f"TOPLAM: {total}", y, font_small_bold)
+            y = draw_left_right("  Öğle", f"x {lunch}", y, font_normal)
+            if dinner > 0:
+                y = draw_left_right("  Akşam", f"x {dinner}", y, font_normal)
+            y += 8
+
+        y = draw_dashed(y)
+
+        gt = summary_data.get("grand_total", {})
+        y = draw_centered("GENEL TOPLAM", y, font_bold)
+        y += 5
+        y = draw_left_right("Öğle", str(gt.get("lunch", 0)), y, font_small_bold)
+        if gt.get("dinner", 0) > 0:
+            y = draw_left_right("Akşam", str(gt.get("dinner", 0)), y, font_small_bold)
+
+        hDC.SelectObject(font_large)
+        total_text = str(gt.get('total', 0))
+        w, h = hDC.GetTextExtent(total_text)
+        hDC.TextOut((horzres - w) // 2, y + 5, total_text)
+        y += h + 15
+
+        y = draw_dashed(y)
+        y = draw_centered("doyuranguvec.com", y, font_small)
+
+        y += 100
+        hDC.TextOut(0, y, " ")
+
+        hDC.EndPage()
+        hDC.EndDoc()
+        hDC.DeleteDC()
+        return _monitor_spooler(printer_name)
+    except Exception as e:
+        log.error(f"Manuel ozet fisi yazdirma hatasi: {e}")
+        return False
+
+
 def print_receipt(order, printer_name):
     if not win32print:
         print("SIMULASYON: win32print kurulu degil.")
@@ -299,13 +409,16 @@ def print_receipt(order, printer_name):
         y = draw_dashed(y)
         
         y = draw_left(order.company_name or "", y, font_bold)
-        if order.contact_name: y = draw_left(order.contact_name, y, font_small)
-        if order.phone: y = draw_left(f"Tel: {order.phone}", y, font_small)
-        if order.address: 
-            addr = order.address
-            while len(addr) > 0:
-                y = draw_left(addr[:50], y, font_small)
-                addr = addr[50:]
+        # Manuel siparişlerde kişisel bilgileri gösterme
+        is_manual = getattr(order, 'is_manual', False)
+        if not is_manual:
+            if order.contact_name: y = draw_left(order.contact_name, y, font_small)
+            if order.phone: y = draw_left(f"Tel: {order.phone}", y, font_small)
+            if order.address: 
+                addr = order.address
+                while len(addr) > 0:
+                    y = draw_left(addr[:50], y, font_small)
+                    addr = addr[50:]
                 
         y = draw_dashed(y)
         
@@ -435,6 +548,7 @@ def db_poller(Session, print_queue, stop_event):
                             "order_date": order.order_date,
                             "created_at": order.created_at,
                             "meal_time": order.meal_time or "",
+                            "is_manual": getattr(order, 'is_manual', False) or False,
                             "items": [
                                 {"name": i.name, "category": i.category, "quantity": i.quantity}
                                 for i in order.items

@@ -111,6 +111,7 @@ class Order(Base):
     created_at = Column(String)
     is_printed = Column(Boolean, default=False)
     meal_time = Column(String, default="")
+    is_manual = Column(Boolean, default=False)
     
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan", lazy="joined")
 
@@ -240,6 +241,12 @@ class OrderIn(BaseModel):
     note: Optional[str] = ""
     meal_time: Optional[str] = ""
 
+class ManualOrderIn(BaseModel):
+    company_name: str = Field(min_length=1)
+    items: List[OrderItemIn]
+    note: Optional[str] = ""
+    meal_time: Optional[str] = ""
+
 CATEGORY_ORDER = ["Çorba", "Ana Yemek", "Yan Yemek", "İçecek", "Tatlı"]
 
 def _category_rank(cat: str) -> int:
@@ -264,6 +271,14 @@ async def lifespan(app):
                     __import__('sqlalchemy').text("ALTER TABLE orders ADD COLUMN meal_time TEXT DEFAULT ''")
                 )
                 logger.info("Migration: meal_time column added to orders table.")
+            except Exception:
+                pass  # Column already exists
+            # Auto-migrate: add is_manual column if missing
+            try:
+                await conn.execute(
+                    __import__('sqlalchemy').text("ALTER TABLE orders ADD COLUMN is_manual BOOLEAN DEFAULT 0")
+                )
+                logger.info("Migration: is_manual column added to orders table.")
             except Exception:
                 pass  # Column already exists
             # Clean up legacy 'Öğle' values
@@ -489,6 +504,7 @@ def _format_order(o: Order) -> dict:
         "revision_count": o.revision_count, "last_revised_at": o.last_revised_at,
         "order_date": o.order_date, "created_at": o.created_at,
         "meal_time": o.meal_time or "",
+        "is_manual": getattr(o, 'is_manual', False) or False,
         "items": [
             {"menu_item_id": i.menu_item_id, "name": i.name, "category": i.category, "quantity": i.quantity}
             for i in o.items
@@ -551,6 +567,7 @@ async def place_order(payload: OrderIn, user: dict = Depends(get_current_user), 
         order_date=today,
         created_at=datetime.now(timezone.utc).isoformat(),
         meal_time=payload.meal_time or "",
+        is_manual=False,
         items=order_items
     )
     
@@ -778,6 +795,220 @@ async def admin_print_daily_summary(date: Optional[str] = None, user: dict = Dep
     except Exception as e:
         logger.error(f"Özet fişi yazdırma hatası: {e}")
         raise HTTPException(status_code=500, detail=f"Yazdırma hatası: {str(e)}")
+# ---------- Manual Order (Admin) ----------
+@api_router.post("/admin/manual-order")
+async def admin_manual_order(payload: ManualOrderIn, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Admin panelinden manuel sipariş girişi. Kayıtlı firma hesabı gerekmez."""
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="Sipariş boş olamaz")
+
+    item_ids = [it.menu_item_id for it in payload.items]
+    res = await db.execute(select(MenuItem).where(MenuItem.id.in_(item_ids)))
+    menu_items = res.scalars().all()
+    menu_map = {m.id: m for m in menu_items}
+
+    total = 0.0
+    order_items = []
+    for it in payload.items:
+        m = menu_map.get(it.menu_item_id)
+        if not m:
+            raise HTTPException(status_code=400, detail=f"Yemek bulunamadı: {it.menu_item_id}")
+        line_total = m.price * it.quantity
+        total += line_total
+        oi = OrderItem(
+            id=str(uuid.uuid4()),
+            menu_item_id=m.id,
+            name=m.name,
+            price=m.price,
+            category=m.category or "Ana Yemek",
+            quantity=it.quantity,
+            line_total=line_total
+        )
+        order_items.append(oi)
+
+    order_items.sort(key=lambda x: _category_rank(x.category))
+    today = today_iso()
+
+    count_res = await db.execute(select(func.count(Order.id)).where(Order.order_date == today))
+    order_no = count_res.scalar() + 1
+
+    new_order = Order(
+        id=str(uuid.uuid4()),
+        order_no=order_no,
+        user_id=user["id"],
+        company_name=payload.company_name,
+        contact_name="",
+        phone="",
+        address="",
+        total=round(total, 2),
+        note=payload.note or "",
+        status="yeni",
+        is_revised=False,
+        revision_count=0,
+        order_date=today,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        meal_time=payload.meal_time or "",
+        is_manual=True,
+        items=order_items
+    )
+
+    db.add(new_order)
+    await db.commit()
+    await db.refresh(new_order)
+    logger.info(f"Manuel sipariş #{order_no} oluşturuldu: {payload.company_name}")
+    return _format_order(new_order)
+
+@api_router.get("/admin/manual-orders")
+async def admin_manual_orders(date: Optional[str] = None, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Manuel siparişlerin geçmişi (tarihe göre filtrelenebilir)."""
+    query = select(Order).where(Order.is_manual == True)
+    if date:
+        query = query.where(Order.order_date == date)
+    query = query.order_by(desc(Order.created_at))
+    res = await db.execute(query)
+    return [_format_order(o) for o in res.scalars().unique().all()]
+
+@api_router.get("/admin/manual-orders/summary")
+async def admin_manual_orders_summary(date: Optional[str] = None, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Manuel siparişlerin gün sonu özeti — Ana Yemek adedine göre kişi sayısı."""
+    import re as _re
+    target_date = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    query = select(Order).where(Order.order_date == target_date, Order.status != "iptal", Order.is_manual == True)
+    res = await db.execute(query)
+    orders = res.scalars().unique().all()
+
+    # Kategori tespiti için menüyü çek
+    menu_res = await db.execute(select(MenuItem))
+    menu_items_map = {mi.name.strip().lower(): mi.category for mi in menu_res.scalars().all()}
+
+    try:
+        dt = datetime.strptime(target_date, "%Y-%m-%d")
+        display_date = dt.strftime("%d.%m.%Y")
+    except Exception:
+        display_date = target_date
+
+    summary = {}
+    for o in orders:
+        name = o.company_name or "Bilinmeyen"
+        if name not in summary:
+            summary[name] = {"company": name, "lunch_qty": 0, "dinner_qty": 0, "total": 0, "order_count": 0, "dinner_items": [], "items": []}
+
+        s = summary[name]
+        s["order_count"] += 1
+        # Öğle kişi sayısı = Ana Yemek kategorisindeki ürünlerin toplam adedi
+        ana_yemek_qty = sum(i.quantity or 1 for i in o.items if (i.category or "Ana Yemek") == "Ana Yemek")
+        s["lunch_qty"] += ana_yemek_qty
+        for i in o.items:
+            s["items"].append({"name": i.name, "category": i.category, "quantity": i.quantity or 1})
+
+        # Akşam yemekleri (meal_time alanından parse et)
+        mt = o.meal_time or ""
+        if mt and mt != "Öğle":
+            for part in mt.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                m = _re.match(r'^(.+?)\s+x(\d+)$', part)
+                if m:
+                    item_name = m.group(1).strip()
+                    qty = int(m.group(2))
+                else:
+                    item_name = part
+                    qty = 1
+                cat = menu_items_map.get(item_name.lower())
+                if cat == "Ana Yemek":
+                    s["dinner_qty"] += qty
+                s["dinner_items"].append(part)
+
+        s["total"] = s["lunch_qty"] + s["dinner_qty"]
+
+    result = sorted(summary.values(), key=lambda x: x["total"], reverse=True)
+    grand_lunch = sum(s["lunch_qty"] for s in result)
+    grand_dinner = sum(s["dinner_qty"] for s in result)
+    grand_orders = sum(s["order_count"] for s in result)
+    return {
+        "date": display_date,
+        "companies": result,
+        "grand_total": {"lunch": grand_lunch, "dinner": grand_dinner, "total": grand_lunch + grand_dinner, "orders": grand_orders}
+    }
+
+@api_router.post("/admin/manual-orders/summary/print")
+async def admin_print_manual_orders_summary(date: Optional[str] = None, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Manuel siparişlerin gün sonu özetini termal yazıcıda yazdır."""
+    import re as _re
+    target_date = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    query = select(Order).where(Order.order_date == target_date, Order.status != "iptal", Order.is_manual == True)
+    res = await db.execute(query)
+    orders = res.scalars().unique().all()
+
+    # Kategori tespiti için menüyü çek
+    menu_res = await db.execute(select(MenuItem))
+    menu_items_map = {mi.name.strip().lower(): mi.category for mi in menu_res.scalars().all()}
+
+    try:
+        dt = datetime.strptime(target_date, "%Y-%m-%d")
+        display_date = dt.strftime("%d.%m.%Y")
+    except Exception:
+        display_date = target_date
+
+    summary = {}
+    for o in orders:
+        name = o.company_name or "Bilinmeyen"
+        if name not in summary:
+            summary[name] = {"company": name, "lunch_qty": 0, "dinner_qty": 0, "total": 0, "order_count": 0}
+        s = summary[name]
+        s["order_count"] += 1
+        # Öğle kişi sayısı = Ana Yemek kategorisindeki ürünlerin toplam adedi
+        ana_yemek_qty = sum(i.quantity or 1 for i in o.items if (i.category or "Ana Yemek") == "Ana Yemek")
+        s["lunch_qty"] += ana_yemek_qty
+
+        # Akşam yemekleri
+        mt = o.meal_time or ""
+        if mt and mt != "Öğle":
+            for part in mt.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                m = _re.match(r'^(.+?)\s+x(\d+)$', part)
+                if m:
+                    item_name = m.group(1).strip()
+                    qty = int(m.group(2))
+                else:
+                    item_name = part
+                    qty = 1
+                cat = menu_items_map.get(item_name.lower())
+                if cat == "Ana Yemek":
+                    s["dinner_qty"] += qty
+
+        s["total"] = s["lunch_qty"] + s["dinner_qty"]
+
+    result = sorted(summary.values(), key=lambda x: x["total"], reverse=True)
+    grand_lunch = sum(s["lunch_qty"] for s in result)
+    grand_dinner = sum(s["dinner_qty"] for s in result)
+    grand_orders = sum(s["order_count"] for s in result)
+    summary_data = {
+        "date": display_date,
+        "companies": result,
+        "grand_total": {"lunch": grand_lunch, "dinner": grand_dinner, "total": grand_lunch + grand_dinner, "orders": grand_orders},
+        "is_manual_summary": True
+    }
+
+    try:
+        import sys, importlib
+        printer_path = str(Path(__file__).parent.parent / "printer_service")
+        if printer_path not in sys.path:
+            sys.path.insert(0, printer_path)
+        printer_mod = importlib.import_module("main")
+        importlib.reload(printer_mod)
+        success = printer_mod.print_manual_summary_receipt(summary_data, printer_mod.PRINTER_NAME)
+        if success:
+            return {"status": "ok", "message": "Manuel sipariş özet fişi yazdırıldı"}
+        else:
+            raise HTTPException(status_code=500, detail="Yazıcı hatası")
+    except Exception as e:
+        logger.error(f"Manuel özet fişi yazdırma hatası: {e}")
+        raise HTTPException(status_code=500, detail=f"Yazdırma hatası: {str(e)}")
+
 @api_router.get("/admin/orders/{order_id}")
 async def admin_order_detail(order_id: str, user: dict = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(Order).where(Order.id == order_id))

@@ -122,6 +122,11 @@ export default function AdminOrders() {
                   <div className="flex-1 min-w-[200px]">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-heading text-lg font-bold text-[#2C2A29]">{o.company_name}</span>
+                      {o.is_manual && (
+                        <span className="inline-flex items-center gap-1 bg-[#4A7C9D]/15 text-[#2F587A] text-[10px] uppercase tracking-[0.15em] font-bold px-2 py-0.5 rounded-full border border-[#4A7C9D]/30">
+                          ✏️ Manuel
+                        </span>
+                      )}
                       <Badge className={`border ${st.cls} rounded-full px-2.5 py-0.5 font-semibold gap-1`}>{st.icon}{st.label}</Badge>
                     </div>
                     <div className="text-sm text-[#8A8580]">
