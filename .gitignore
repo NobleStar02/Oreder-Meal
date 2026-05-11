@@ -94,3 +94,8 @@ credentials.json
 *.key
 .credentials
 *.db
+*.db-wal
+*.db-shm
+
+# Test scripts
+test_*.py

@@ -32,6 +32,13 @@ else:
 
 PRINTER_NAME = "POSPrinter POS80"
 
+def _turkish_upper(text):
+    """Türkçe karakter desteğiyle büyük harfe çevir (i→İ, ı→I vb.)."""
+    if not text:
+        return text
+    tr_map = str.maketrans("abcçdefgğhıijklmnoöprsştuüvyz", "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ")
+    return text.translate(tr_map).upper()
+
 Base = declarative_base()
 
 # ---------- Models (backend/server.py ile senkronize) ----------
@@ -115,6 +122,9 @@ def print_summary_receipt(summary_data, printer_name):
         hDC.CreatePrinterDC(printer_name)
         hDC.SetMapMode(win32con.MM_TEXT)
         horzres = hDC.GetDeviceCaps(win32con.HORZRES)
+        vertres = hDC.GetDeviceCaps(win32con.VERTRES)
+        # Sayfa taşma koruması: sayfanın %85'ini geçince yeni sayfa aç
+        page_threshold = int(vertres * 0.85) if vertres > 500 else 99999
 
         # Fontlar
         def make_font(size, bold=False, name="Arial"):
@@ -156,6 +166,15 @@ def print_summary_receipt(summary_data, printer_name):
             hDC.TextOut(10, y, line)
             return y + h + 2
 
+        def new_page(y):
+            """Sayfa taştığında yeni sayfa başlat ve continuation header ekle."""
+            hDC.EndPage()
+            hDC.StartPage()
+            y = 10
+            y = draw_centered("GÜN ÖZETİ (devam)", y, font_small_bold)
+            y = draw_dashed(y)
+            return y
+
         hDC.StartDoc("GunOzeti")
         hDC.StartPage()
 
@@ -169,7 +188,11 @@ def print_summary_receipt(summary_data, printer_name):
 
         companies = summary_data.get("companies", [])
         for c in companies:
-            name = c.get("company", "")
+            # Sayfa taşma kontrolü: bir firma bloğu (~100px) sığmayacaksa yeni sayfa
+            if y > page_threshold:
+                y = new_page(y)
+
+            name = _turkish_upper(c.get("company", ""))
             lunch = c.get("lunch_qty", 0)
             dinner = c.get("dinner_qty", 0)
             total = c.get("total", 0)
@@ -181,6 +204,10 @@ def print_summary_receipt(summary_data, printer_name):
             y += 8
 
         y = draw_dashed(y)
+
+        # Genel toplam için sayfa kontrolü
+        if y > page_threshold:
+            y = new_page(y)
 
         gt = summary_data.get("grand_total", {})
         y = draw_centered("GENEL TOPLAM", y, font_bold)
@@ -224,6 +251,9 @@ def print_manual_summary_receipt(summary_data, printer_name):
         hDC.CreatePrinterDC(printer_name)
         hDC.SetMapMode(win32con.MM_TEXT)
         horzres = hDC.GetDeviceCaps(win32con.HORZRES)
+        vertres = hDC.GetDeviceCaps(win32con.VERTRES)
+        # Sayfa taşma koruması: sayfanın %85'ini geçince yeni sayfa aç
+        page_threshold = int(vertres * 0.85) if vertres > 500 else 99999
 
         # Fontlar
         def make_font(size, bold=False, name="Arial"):
@@ -265,6 +295,15 @@ def print_manual_summary_receipt(summary_data, printer_name):
             hDC.TextOut(10, y, line)
             return y + h + 2
 
+        def new_page(y):
+            """Sayfa taştığında yeni sayfa başlat ve continuation header ekle."""
+            hDC.EndPage()
+            hDC.StartPage()
+            y = 10
+            y = draw_centered("MANUEL ÖZETİ (devam)", y, font_small_bold)
+            y = draw_dashed(y)
+            return y
+
         hDC.StartDoc("ManuelOzet")
         hDC.StartPage()
 
@@ -278,7 +317,11 @@ def print_manual_summary_receipt(summary_data, printer_name):
 
         companies = summary_data.get("companies", [])
         for c in companies:
-            name = c.get("company", "")
+            # Sayfa taşma kontrolü
+            if y > page_threshold:
+                y = new_page(y)
+
+            name = _turkish_upper(c.get("company", ""))
             lunch = c.get("lunch_qty", 0)
             dinner = c.get("dinner_qty", 0)
             total = c.get("total", 0)
@@ -290,6 +333,10 @@ def print_manual_summary_receipt(summary_data, printer_name):
             y += 8
 
         y = draw_dashed(y)
+
+        # Genel toplam için sayfa kontrolü
+        if y > page_threshold:
+            y = new_page(y)
 
         gt = summary_data.get("grand_total", {})
         y = draw_centered("GENEL TOPLAM", y, font_bold)
@@ -334,6 +381,7 @@ def print_receipt(order, printer_name):
         
         horzres = hDC.GetDeviceCaps(win32con.HORZRES)
         
+        font_company = win32ui.CreateFont({"name": "Arial", "height": 56, "weight": 700})
         font_large = win32ui.CreateFont({"name": "Arial", "height": 42, "weight": 700})
         font_normal = win32ui.CreateFont({"name": "Arial", "height": 28, "weight": 400})
         font_bold = win32ui.CreateFont({"name": "Arial", "height": 30, "weight": 700})
@@ -393,11 +441,17 @@ def print_receipt(order, printer_name):
         if order.is_revised:
             y = draw_centered(f"*** DÜZELTİLDİ (x{order.revision_count or 1}) ***", y, font_bold)
             y += 5
-            
-        y = draw_centered("DOYURAN GÜVEÇ LOKANTASI", y, font_bold)
-        y = draw_centered("Günlük Taze - Öğle Paketi", y, font_small)
-        y += 10
+
+        # ★ FİRMA ADI — üst ortada büyük font
+        company_display = _turkish_upper((order.company_name or "").strip())
+        if company_display:
+            y = draw_centered(company_display, y, font_company)
+            y += 5
         y = draw_dashed(y)
+            
+        y = draw_centered("DOYURAN GÜVEÇ LOKANTASI", y, font_small_bold)
+        y = draw_centered("Günlük Taze - Öğle Paketi", y, font_small)
+        y += 5
         
         y = draw_left_right("Sipariş No:", f"#{order.order_no}", y, font_small_bold)
         y = draw_left_right("Tarih:", format_date(order.created_at), y, font_small)
@@ -405,10 +459,7 @@ def print_receipt(order, printer_name):
         
         if order.is_revised and order.last_revised_at:
             y = draw_left_right("Düzeltildi:", format_time(order.last_revised_at), y, font_small_bold)
-            
-        y = draw_dashed(y)
-        
-        y = draw_left(order.company_name or "", y, font_bold)
+
         # Manuel siparişlerde kişisel bilgileri gösterme
         is_manual = getattr(order, 'is_manual', False)
         if not is_manual:

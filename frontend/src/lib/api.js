@@ -1,7 +1,12 @@
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-export const API = `${BACKEND_URL}/api`;
+// Telefondan erişimde localhost yerine bilgisayarın IP'sini kullan
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:8000";
+const currentHost = typeof window !== "undefined" ? window.location.hostname : "localhost";
+const resolvedBackend = currentHost !== "localhost" && currentHost !== "127.0.0.1"
+  ? BACKEND_URL.replace("localhost", currentHost)
+  : BACKEND_URL;
+export const API = `${resolvedBackend}/api`;
 
 export const api = axios.create({
   baseURL: API,
