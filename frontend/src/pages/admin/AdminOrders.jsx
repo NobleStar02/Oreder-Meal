@@ -6,7 +6,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Badge } from "../../components/ui/badge";
-import { Printer, RefreshCw, ChefHat, Check, X, Clock, AlertTriangle, BarChart3 } from "lucide-react";
+import { Printer, RefreshCw, ChefHat, Check, X, Clock, AlertTriangle, BarChart3, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 export default function AdminOrders() {
@@ -18,14 +18,18 @@ export default function AdminOrders() {
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryPrinting, setSummaryPrinting] = useState(false);
+  const [page, setPage] = useState(1);
+  const limit = 10;
 
   const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
     if (date) params.set("date", date);
     if (status !== "all") params.set("status", status);
+    params.set("page", page.toString());
+    params.set("limit", limit.toString());
     api.get(`/admin/orders?${params}`).then((r) => setOrders(r.data)).finally(() => setLoading(false));
-  }, [date, status]);
+  }, [date, status, page]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -78,11 +82,11 @@ export default function AdminOrders() {
         <div className="flex items-end gap-3">
           <div>
             <Label className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580]">Tarih</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 rounded-lg border-[#E5DFD3] h-11 bg-white" data-testid="admin-orders-date-filter" />
+            <Input type="date" value={date} onChange={(e) => { setDate(e.target.value); setPage(1); }} className="mt-1 rounded-lg border-[#E5DFD3] h-11 bg-white" data-testid="admin-orders-date-filter" />
           </div>
           <div>
             <Label className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580]">Durum</Label>
-            <Select value={status} onValueChange={setStatus}>
+            <Select value={status} onValueChange={(val) => { setStatus(val); setPage(1); }}>
               <SelectTrigger className="w-44 mt-1 rounded-lg border-[#E5DFD3] h-11 bg-white" data-testid="admin-orders-status-filter"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tümü</SelectItem>
@@ -106,86 +110,115 @@ export default function AdminOrders() {
         ) : orders.length === 0 ? (
           <div className="bg-white rounded-2xl border border-[#E5DFD3] p-10 text-center text-[#8A8580]">Bu kriterlere uygun sipariş yok.</div>
         ) : (
-          orders.map((o) => {
-            const st = STATUS_LABELS[o.status] || STATUS_LABELS.yeni;
-            return (
-              <div key={o.id} className={`rounded-2xl border p-5 ${o.is_revised ? "bg-[#E8AA42]/10 border-[#E8AA42]/50 ring-2 ring-[#E8AA42]/30" : "bg-white border-[#E5DFD3]"}`} data-testid={`admin-order-${o.id}`}>
-                {o.is_revised && (
-                  <div className="flex items-center gap-2 bg-[#2C2A29] text-white text-xs uppercase tracking-[0.2em] font-bold px-3 py-1.5 rounded-full mb-3 w-fit" data-testid={`admin-order-revised-${o.id}`}>
-                    <AlertTriangle size={12} /> Düzeltildi ×{o.revision_count || 1} — Fişi yeniden yazdırın
-                  </div>
-                )}
-                <div className="flex flex-wrap items-start gap-4">
-                  <div className="w-14 h-14 rounded-full bg-[#C05A46]/10 grid place-items-center font-mono font-bold text-[#C05A46]">
-                    #{o.order_no}
-                  </div>
-                  <div className="flex-1 min-w-[200px]">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-heading text-lg font-bold text-[#2C2A29]">{o.company_name}</span>
-                      {o.is_manual && (
-                        <span className="inline-flex items-center gap-1 bg-[#4A7C9D]/15 text-[#2F587A] text-[10px] uppercase tracking-[0.15em] font-bold px-2 py-0.5 rounded-full border border-[#4A7C9D]/30">
-                          ✏️ Manuel
-                        </span>
-                      )}
-                      <Badge className={`border ${st.cls} rounded-full px-2.5 py-0.5 font-semibold gap-1`}>{st.icon}{st.label}</Badge>
+          <>
+            {orders.map((o) => {
+              const st = STATUS_LABELS[o.status] || STATUS_LABELS.yeni;
+              return (
+                <div key={o.id} className={`rounded-2xl border p-5 ${o.is_revised ? "bg-[#E8AA42]/10 border-[#E8AA42]/50 ring-2 ring-[#E8AA42]/30" : "bg-white border-[#E5DFD3]"}`} data-testid={`admin-order-${o.id}`}>
+                  {o.is_revised && (
+                    <div className="flex items-center gap-2 bg-[#2C2A29] text-white text-xs uppercase tracking-[0.2em] font-bold px-3 py-1.5 rounded-full mb-3 w-fit" data-testid={`admin-order-revised-${o.id}`}>
+                      <AlertTriangle size={12} /> Düzeltildi ×{o.revision_count || 1} — Fişi yeniden yazdırın
                     </div>
-                    <div className="text-sm text-[#8A8580]">
-                      {formatTimeTR(o.created_at)}
-                      {o.meal_time && o.meal_time !== "Öğle" && (
-                        <span className="inline-flex items-center gap-1 ml-2 bg-[#2C2A29] text-white text-[10px] uppercase tracking-[0.15em] font-bold px-2 py-0.5 rounded-full">
-                          🌙 Akşam Yemeği Var
-                        </span>
-                      )}
-                      {o.contact_name && <> · {o.contact_name}</>}
-                      {o.phone && <> · {o.phone}</>}
+                  )}
+                  <div className="flex flex-wrap items-start gap-4">
+                    <div className="w-14 h-14 rounded-full bg-[#C05A46]/10 grid place-items-center font-mono font-bold text-[#C05A46]">
+                      #{o.order_no}
                     </div>
-                    {o.address && <div className="text-xs text-[#8A8580] mt-0.5">{o.address}</div>}
+                    <div className="flex-1 min-w-[200px]">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-heading text-lg font-bold text-[#2C2A29]">{o.company_name}</span>
+                        {o.is_manual && (
+                          <span className="inline-flex items-center gap-1 bg-[#4A7C9D]/15 text-[#2F587A] text-[10px] uppercase tracking-[0.15em] font-bold px-2 py-0.5 rounded-full border border-[#4A7C9D]/30">
+                            ✏️ Manuel
+                          </span>
+                        )}
+                        <Badge className={`border ${st.cls} rounded-full px-2.5 py-0.5 font-semibold gap-1`}>{st.icon}{st.label}</Badge>
+                      </div>
+                      <div className="text-sm text-[#8A8580]">
+                        {formatTimeTR(o.created_at)}
+                        {o.meal_time && o.meal_time !== "Öğle" && (
+                          <span className="inline-flex items-center gap-1 ml-2 bg-[#2C2A29] text-white text-[10px] uppercase tracking-[0.15em] font-bold px-2 py-0.5 rounded-full">
+                            🌙 Akşam Yemeği Var
+                          </span>
+                        )}
+                        {o.contact_name && <> · {o.contact_name}</>}
+                        {o.phone && <> · {o.phone}</>}
+                      </div>
+                      {o.address && <div className="text-xs text-[#8A8580] mt-0.5">{o.address}</div>}
+                    </div>
+                    <div className="text-right">
+                      <div className="font-heading text-2xl font-bold text-[#2C2A29]">{o.items.reduce((s, i) => s + i.quantity, 0)}</div>
+                      <div className="text-xs text-[#8A8580] uppercase tracking-[0.15em]">adet</div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-heading text-2xl font-bold text-[#2C2A29]">{o.items.reduce((s, i) => s + i.quantity, 0)}</div>
-                    <div className="text-xs text-[#8A8580] uppercase tracking-[0.15em]">adet</div>
+
+                  <div className="mt-4">
+                    <CategorizedAdminItems items={o.items} />
+                  </div>
+
+                  {o.note && (
+                    <div className="mt-3 bg-[#F2EBE3] rounded-lg px-3 py-2 text-sm text-[#2C2A29]">
+                      <span className="font-bold">Not:</span> {o.note}
+                    </div>
+                  )}
+
+                  {o.meal_time && o.meal_time !== "Öğle" && (
+                    <div className="mt-3 bg-[#2C2A29] rounded-lg px-3 py-2 text-sm text-white">
+                      <span className="font-bold">🌙 Akşam Yemeği İsteği:</span> {o.meal_time}
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link to={`/print/${o.id}`} target="_blank" data-testid={`admin-order-print-${o.id}`}>
+                      <Button className="bg-[#2C2A29] hover:bg-[#1a1918] text-white rounded-full"><Printer size={14} className="mr-2" /> Termal Yazdır</Button>
+                    </Link>
+                    {o.status === "yeni" && (
+                      <Button variant="outline" onClick={() => updateStatus(o.id, "hazirlaniyor")} className="rounded-full border-[#E5DFD3]" data-testid={`admin-order-prepare-${o.id}`}>
+                        <ChefHat size={14} className="mr-2" /> Hazırlamaya Başla
+                      </Button>
+                    )}
+                    {o.status === "hazirlaniyor" && (
+                      <Button variant="outline" onClick={() => updateStatus(o.id, "tamamlandi")} className="rounded-full border-[#E5DFD3]" data-testid={`admin-order-complete-${o.id}`}>
+                        <Check size={14} className="mr-2" /> Tamamlandı
+                      </Button>
+                    )}
+                    {o.status !== "iptal" && o.status !== "tamamlandi" && (
+                      <Button variant="ghost" onClick={() => updateStatus(o.id, "iptal")} className="text-[#B93A32] rounded-full hover:bg-[#B93A32]/10" data-testid={`admin-order-cancel-${o.id}`}>
+                        <X size={14} className="mr-2" /> İptal Et
+                      </Button>
+                    )}
                   </div>
                 </div>
+              );
+            })}
 
-                <div className="mt-4">
-                  <CategorizedAdminItems items={o.items} />
-                </div>
-
-                {o.note && (
-                  <div className="mt-3 bg-[#F2EBE3] rounded-lg px-3 py-2 text-sm text-[#2C2A29]">
-                    <span className="font-bold">Not:</span> {o.note}
-                  </div>
-                )}
-
-                {o.meal_time && o.meal_time !== "Öğle" && (
-                  <div className="mt-3 bg-[#2C2A29] rounded-lg px-3 py-2 text-sm text-white">
-                    <span className="font-bold">🌙 Akşam Yemeği İsteği:</span> {o.meal_time}
-                  </div>
-                )}
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Link to={`/print/${o.id}`} target="_blank" data-testid={`admin-order-print-${o.id}`}>
-                    <Button className="bg-[#2C2A29] hover:bg-[#1a1918] text-white rounded-full"><Printer size={14} className="mr-2" /> Termal Yazdır</Button>
-                  </Link>
-                  {o.status === "yeni" && (
-                    <Button variant="outline" onClick={() => updateStatus(o.id, "hazirlaniyor")} className="rounded-full border-[#E5DFD3]" data-testid={`admin-order-prepare-${o.id}`}>
-                      <ChefHat size={14} className="mr-2" /> Hazırlamaya Başla
-                    </Button>
-                  )}
-                  {o.status === "hazirlaniyor" && (
-                    <Button variant="outline" onClick={() => updateStatus(o.id, "tamamlandi")} className="rounded-full border-[#E5DFD3]" data-testid={`admin-order-complete-${o.id}`}>
-                      <Check size={14} className="mr-2" /> Tamamlandı
-                    </Button>
-                  )}
-                  {o.status !== "iptal" && o.status !== "tamamlandi" && (
-                    <Button variant="ghost" onClick={() => updateStatus(o.id, "iptal")} className="text-[#B93A32] rounded-full hover:bg-[#B93A32]/10" data-testid={`admin-order-cancel-${o.id}`}>
-                      <X size={14} className="mr-2" /> İptal Et
-                    </Button>
-                  )}
-                </div>
+            {/* Sayfalama Kontrolleri */}
+            <div className="flex items-center justify-between mt-6 bg-white rounded-2xl border border-[#E5DFD3] p-5">
+              <div className="text-sm text-[#8A8580]">
+                Sayfa <span className="font-semibold text-[#2C2A29]">{page}</span>
               </div>
-            );
-          })
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1 || loading}
+                  className="rounded-full border-[#E5DFD3] h-10 px-4 hover:bg-[#F9F6F0]"
+                  data-testid="admin-orders-prev-page"
+                >
+                  <ChevronLeft size={16} className="mr-1" /> Önceki
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={orders.length < limit || loading}
+                  className="rounded-full border-[#E5DFD3] h-10 px-4 hover:bg-[#F9F6F0]"
+                  data-testid="admin-orders-next-page"
+                >
+                  Sonraki <ChevronRight size={16} className="ml-1" />
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </div>
 

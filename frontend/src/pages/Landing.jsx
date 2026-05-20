@@ -90,7 +90,7 @@ export default function Landing() {
         <div className="grid lg:grid-cols-2 gap-10 items-center">
           <div className="rounded-3xl overflow-hidden border border-[#E5DFD3] shadow-md">
             <img
-              src="https://images.unsplash.com/photo-1645453014403-4ad5170a386c?crop=entropy&cs=srgb&fm=jpg&q=80"
+              src="/lokanta.jpg"
               alt="Lokanta"
               className="w-full h-[420px] object-cover"
             />

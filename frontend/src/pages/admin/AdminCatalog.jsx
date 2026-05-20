@@ -6,6 +6,7 @@ import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../../components/ui/dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "../../components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Library } from "lucide-react";
 
@@ -20,6 +21,8 @@ export default function AdminCatalog() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
   const [filterCat, setFilterCat] = useState("all");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -59,14 +62,22 @@ export default function AdminCatalog() {
     }
   };
 
-  const remove = async (it) => {
-    if (!window.confirm(`"${it.name}" havuzdan silinsin mi? (Günün menüsündeki mevcut kayıtlar etkilenmez)`)) return;
+  const confirmRemove = (it) => {
+    setDeleteTarget(it);
+    setShowDeleteDialog(true);
+  };
+
+  const remove = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/admin/catalog/${it.id}`);
+      await api.delete(`/admin/catalog/${deleteTarget.id}`);
       toast.success("Silindi");
       load();
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
+    } finally {
+      setShowDeleteDialog(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -117,7 +128,7 @@ export default function AdminCatalog() {
                 </div>
                 <span className="hidden sm:inline-block text-[10px] uppercase tracking-[0.2em] font-bold text-[#C05A46] bg-[#C05A46]/10 px-2.5 py-1 rounded-full">{it.category}</span>
                 <Button variant="ghost" size="icon" onClick={() => openEdit(it)}><Pencil size={16} /></Button>
-                <Button variant="ghost" size="icon" onClick={() => remove(it)} className="text-[#B93A32]"><Trash2 size={16} /></Button>
+                <Button variant="ghost" size="icon" onClick={() => confirmRemove(it)} className="text-[#B93A32]"><Trash2 size={16} /></Button>
               </li>
             ))}
           </ul>
@@ -160,6 +171,22 @@ export default function AdminCatalog() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ===== Silme Onay AlertDialog ===== */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent className="bg-white rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading text-xl">Emin misiniz?</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#5C5855]">
+              <strong className="text-[#2C2A29]">"{deleteTarget?.name}"</strong> havuzdan silinecek. Günün menüsündeki mevcut kayıtlar etkilenmez. Bu işlem geri alınamaz.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-full border-[#E5DFD3]" onClick={() => { setShowDeleteDialog(false); setDeleteTarget(null); }}>İptal</AlertDialogCancel>
+            <AlertDialogAction className="bg-[#B93A32] hover:bg-[#9C302A] text-white rounded-full" onClick={remove}>Sil</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

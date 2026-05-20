@@ -33,7 +33,7 @@ export default function Login() {
     <div className="min-h-screen grid lg:grid-cols-2">
       <div className="relative hidden lg:block">
         <img
-          src="https://images.unsplash.com/photo-1708212296033-ba8d14bb0209?crop=entropy&cs=srgb&fm=jpg&q=80"
+          src="/login-bg.jpg"
           alt="Sıcak güveç"
           className="absolute inset-0 w-full h-full object-cover"
         />

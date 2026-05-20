@@ -3,9 +3,8 @@ import time
 import queue
 import threading
 import logging
+import requests
 from pathlib import Path
-from sqlalchemy import create_engine, select, event, Column, String, Boolean, Integer, Float, ForeignKey
-from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from dotenv import load_dotenv
 
 try:
@@ -18,19 +17,68 @@ ROOT_DIR = Path(__file__).parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
 load_dotenv(BACKEND_DIR / ".env")
 
-# DB URL — backend ile ayni .env'den okur, async driver'i sync'e cevirir
-_raw_url = os.environ.get('DATABASE_URL', '')
-DB_FILE = BACKEND_DIR / "doyuran_guvec.db"
+# Logging — modül seviyesinde tanımla; tüm fonksiyonlar kullanabilsin
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(threadName)s] %(message)s')
+log = logging.getLogger("printer")
 
-if _raw_url.startswith("postgresql"):
-    # PostgreSQL: asyncpg → psycopg2 (sync)
-    DATABASE_URL = _raw_url.replace("postgresql+asyncpg", "postgresql")
-else:
-    # SQLite: her zaman mutlak yol kullan
-    DATABASE_URL = f"sqlite:///{DB_FILE}"
-
+# Backend Settings
+BACKEND_URL = os.environ.get('BACKEND_URL', 'http://localhost:8000').rstrip('/')
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', '')
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '')
 
 PRINTER_NAME = "POSPrinter POS80"
+
+# ---------- HTTP API Session & Auth ----------
+session = requests.Session()
+authenticated = False
+
+def authenticate():
+    global authenticated
+    authenticated = False
+    url = f"{BACKEND_URL}/api/auth/login"
+    try:
+        log.info(f"Yonetici girisi yapiliyor: {ADMIN_EMAIL}")
+        r = session.post(url, json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}, timeout=10)
+        if r.status_code == 200:
+            log.info("Yonetici girisi basarili.")
+            authenticated = True
+            return True
+        else:
+            log.error(f"Giris basarisiz. HTTP: {r.status_code}, Detay: {r.text}")
+            return False
+    except Exception as e:
+        log.error(f"Giris yapilirken sunucuya baglanilamadi: {e}")
+        return False
+
+def make_request(method, path, **kwargs):
+    global authenticated
+    url = f"{BACKEND_URL}{path}"
+    
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = 10
+        
+    for attempt in range(3):
+        if not authenticated:
+            if not authenticate():
+                time.sleep(3)
+                continue
+                
+        try:
+            r = session.request(method, url, **kwargs)
+            if r.status_code in (401, 403):
+                log.warning("Oturum gecersiz. Tekrar giris yapiliyor...")
+                authenticated = False
+                continue
+            r.raise_for_status()
+            return r
+        except requests.exceptions.RequestException as e:
+            log.error(f"HTTP Istek hatasi ({method} {path}): {e}")
+            if attempt < 2:
+                time.sleep(2)
+            else:
+                raise
+    raise Exception(f"HTTP istegi {method} {path} basarisiz oldu.")
+
 
 def _turkish_upper(text):
     """Türkçe karakter desteğiyle büyük harfe çevir (i→İ, ı→I vb.)."""
@@ -38,46 +86,6 @@ def _turkish_upper(text):
         return text
     tr_map = str.maketrans("abcçdefgğhıijklmnoöprsştuüvyz", "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ")
     return text.translate(tr_map).upper()
-
-Base = declarative_base()
-
-# ---------- Models (backend/server.py ile senkronize) ----------
-
-class Order(Base):
-    __tablename__ = 'orders'
-    id = Column(String, primary_key=True)
-    order_no = Column(Integer)
-    user_id = Column(String)
-    company_name = Column(String)
-    contact_name = Column(String)
-    phone = Column(String)
-    address = Column(String)
-    total = Column(Float)
-    note = Column(String)
-    status = Column(String)
-    is_revised = Column(Boolean)
-    revision_count = Column(Integer)
-    last_revised_at = Column(String)
-    order_date = Column(String)
-    created_at = Column(String)
-    is_printed = Column(Boolean)
-    meal_time = Column(String)
-    is_manual = Column(Boolean, default=False)
-    
-    items = relationship("OrderItem", back_populates="order")
-
-class OrderItem(Base):
-    __tablename__ = 'order_items'
-    id = Column(String, primary_key=True)
-    order_id = Column(String, ForeignKey('orders.id'))
-    menu_item_id = Column(String)
-    name = Column(String)
-    price = Column(Float)
-    category = Column(String)
-    quantity = Column(Integer)
-    line_total = Column(Float)
-    
-    order = relationship("Order", back_populates="items")
 
 
 def _monitor_spooler(printer_name):
@@ -108,8 +116,10 @@ def _monitor_spooler(printer_name):
         win32print.ClosePrinter(hprinter)
 
 
-def print_summary_receipt(summary_data, printer_name):
-    """Günlük özet fişi yazdır."""
+def _print_summary(summary_data, printer_name,
+                    title="GÜN ÖZETİ", doc_name="GunOzeti",
+                    cont_title="GÜN ÖZETİ (devam)"):
+    """Özet fişi yazdırma ortak mantığı (günlük & manuel)."""
     if not win32print:
         print("SIMULASYON: win32print kurulu degil.")
         return True
@@ -123,8 +133,9 @@ def print_summary_receipt(summary_data, printer_name):
         hDC.SetMapMode(win32con.MM_TEXT)
         horzres = hDC.GetDeviceCaps(win32con.HORZRES)
         vertres = hDC.GetDeviceCaps(win32con.VERTRES)
-        # Sayfa taşma koruması: sayfanın %85'ini geçince yeni sayfa aç
-        page_threshold = int(vertres * 0.85) if vertres > 500 else 99999
+        # Sayfa taşma koruması: Rulo yazıcılarda (POS) tek parça/rulo çıktı almak için sayfa bölmeyi devre dışı bırakıyoruz.
+        # Bu sayede gün sonu özeti tek parça halinde kesintisiz olarak basılır.
+        page_threshold = 999999
 
         # Fontlar
         def make_font(size, bold=False, name="Arial"):
@@ -171,16 +182,16 @@ def print_summary_receipt(summary_data, printer_name):
             hDC.EndPage()
             hDC.StartPage()
             y = 10
-            y = draw_centered("GÜN ÖZETİ (devam)", y, font_small_bold)
+            y = draw_centered(cont_title, y, font_small_bold)
             y = draw_dashed(y)
             return y
 
-        hDC.StartDoc("GunOzeti")
+        hDC.StartDoc(doc_name)
         hDC.StartPage()
 
         y = 10
         y = draw_centered("DOYURAN GÜVEÇ LOKANTASI", y, font_bold)
-        y = draw_centered("GÜN ÖZETİ", y, font_small_bold)
+        y = draw_centered(title, y, font_small_bold)
         y += 5
         y = draw_centered(summary_data.get("date", ""), y, font_small)
         y += 5
@@ -188,7 +199,6 @@ def print_summary_receipt(summary_data, printer_name):
 
         companies = summary_data.get("companies", [])
         for c in companies:
-            # Sayfa taşma kontrolü: bir firma bloğu (~100px) sığmayacaksa yeni sayfa
             if y > page_threshold:
                 y = new_page(y)
 
@@ -205,7 +215,6 @@ def print_summary_receipt(summary_data, printer_name):
 
         y = draw_dashed(y)
 
-        # Genel toplam için sayfa kontrolü
         if y > page_threshold:
             y = new_page(y)
 
@@ -215,7 +224,7 @@ def print_summary_receipt(summary_data, printer_name):
         y = draw_left_right("Öğle", str(gt.get("lunch", 0)), y, font_small_bold)
         if gt.get("dinner", 0) > 0:
             y = draw_left_right("Akşam", str(gt.get("dinner", 0)), y, font_small_bold)
-        
+
         hDC.SelectObject(font_large)
         total_text = str(gt.get("total", 0))
         w, h = hDC.GetTextExtent(total_text)
@@ -237,133 +246,19 @@ def print_summary_receipt(summary_data, printer_name):
         return False
 
 
+def print_summary_receipt(summary_data, printer_name):
+    """Günlük özet fişi yazdır."""
+    return _print_summary(summary_data, printer_name)
+
+
 def print_manual_summary_receipt(summary_data, printer_name):
     """Manuel sipariş gün sonu özet fişi yazdır."""
-    if not win32print:
-        print("SIMULASYON: win32print kurulu degil.")
-        return True
-
-    try:
-        import win32ui
-        import win32con
-
-        hDC = win32ui.CreateDC()
-        hDC.CreatePrinterDC(printer_name)
-        hDC.SetMapMode(win32con.MM_TEXT)
-        horzres = hDC.GetDeviceCaps(win32con.HORZRES)
-        vertres = hDC.GetDeviceCaps(win32con.VERTRES)
-        # Sayfa taşma koruması: sayfanın %85'ini geçince yeni sayfa aç
-        page_threshold = int(vertres * 0.85) if vertres > 500 else 99999
-
-        # Fontlar
-        def make_font(size, bold=False, name="Arial"):
-            return win32ui.CreateFont({
-                "name": name, "height": size,
-                "weight": 700 if bold else 400,
-            })
-
-        font_bold = make_font(40, bold=True)
-        font_normal = make_font(28)
-        font_small = make_font(24)
-        font_small_bold = make_font(24, bold=True)
-        font_large = make_font(48, bold=True)
-
-        def draw_centered(text, y, font):
-            hDC.SelectObject(font)
-            w, h = hDC.GetTextExtent(text)
-            hDC.TextOut((horzres - w) // 2, y, text)
-            return y + h + 2
-
-        def draw_left(text, y, font):
-            hDC.SelectObject(font)
-            _, h = hDC.GetTextExtent(text)
-            hDC.TextOut(10, y, text)
-            return y + h + 2
-
-        def draw_left_right(left, right, y, font):
-            hDC.SelectObject(font)
-            _, h = hDC.GetTextExtent(left)
-            wr, _ = hDC.GetTextExtent(right)
-            hDC.TextOut(10, y, left)
-            hDC.TextOut(horzres - wr - 10, y, right)
-            return y + h + 2
-
-        def draw_dashed(y):
-            hDC.SelectObject(font_small)
-            line = "-" * 48
-            _, h = hDC.GetTextExtent(line)
-            hDC.TextOut(10, y, line)
-            return y + h + 2
-
-        def new_page(y):
-            """Sayfa taştığında yeni sayfa başlat ve continuation header ekle."""
-            hDC.EndPage()
-            hDC.StartPage()
-            y = 10
-            y = draw_centered("MANUEL ÖZETİ (devam)", y, font_small_bold)
-            y = draw_dashed(y)
-            return y
-
-        hDC.StartDoc("ManuelOzet")
-        hDC.StartPage()
-
-        y = 10
-        y = draw_centered("DOYURAN GÜVEÇ LOKANTASI", y, font_bold)
-        y = draw_centered("MANUEL SİPARİŞ ÖZETİ", y, font_small_bold)
-        y += 5
-        y = draw_centered(summary_data.get("date", ""), y, font_small)
-        y += 5
-        y = draw_dashed(y)
-
-        companies = summary_data.get("companies", [])
-        for c in companies:
-            # Sayfa taşma kontrolü
-            if y > page_threshold:
-                y = new_page(y)
-
-            name = _turkish_upper(c.get("company", ""))
-            lunch = c.get("lunch_qty", 0)
-            dinner = c.get("dinner_qty", 0)
-            total = c.get("total", 0)
-
-            y = draw_left_right(name[:30], f"TOPLAM: {total}", y, font_small_bold)
-            y = draw_left_right("  Öğle", f"x {lunch}", y, font_normal)
-            if dinner > 0:
-                y = draw_left_right("  Akşam", f"x {dinner}", y, font_normal)
-            y += 8
-
-        y = draw_dashed(y)
-
-        # Genel toplam için sayfa kontrolü
-        if y > page_threshold:
-            y = new_page(y)
-
-        gt = summary_data.get("grand_total", {})
-        y = draw_centered("GENEL TOPLAM", y, font_bold)
-        y += 5
-        y = draw_left_right("Öğle", str(gt.get("lunch", 0)), y, font_small_bold)
-        if gt.get("dinner", 0) > 0:
-            y = draw_left_right("Akşam", str(gt.get("dinner", 0)), y, font_small_bold)
-
-        hDC.SelectObject(font_large)
-        total_text = str(gt.get('total', 0))
-        w, h = hDC.GetTextExtent(total_text)
-        hDC.TextOut((horzres - w) // 2, y + 5, total_text)
-        y += h + 15
-
-        y = draw_dashed(y)
-        y = draw_centered("doyuranguvec.com", y, font_small)
-
-        y += 100
-        hDC.TextOut(0, y, " ")
-
-        hDC.EndPage()
-        hDC.EndDoc()
-        hDC.DeleteDC()
-        return _monitor_spooler(printer_name)
-    except Exception as e:
-        log.error(f"Manuel ozet fisi yazdirma hatasi: {e}")
-        return False
+    return _print_summary(
+        summary_data, printer_name,
+        title="MANUEL SİPARİŞ ÖZETİ",
+        doc_name="ManuelOzet",
+        cont_title="MANUEL ÖZETİ (devam)",
+    )
 
 
 def print_receipt(order, printer_name):
@@ -418,7 +313,6 @@ def print_receipt(order, printer_name):
             hDC.TextOut(0, y, "-" * count)
             return y + height + 5
             
-        # Türkiye saat dilimi (UTC+3)
         TR_TZ = timezone(timedelta(hours=3))
         
         def format_date(iso_str):
@@ -437,12 +331,10 @@ def print_receipt(order, printer_name):
 
         y = 0
         
-        # Banner for Revised
         if order.is_revised:
             y = draw_centered(f"*** DÜZELTİLDİ (x{order.revision_count or 1}) ***", y, font_bold)
             y += 5
 
-        # ★ FİRMA ADI — üst ortada büyük font
         company_display = _turkish_upper((order.company_name or "").strip())
         if company_display:
             y = draw_centered(company_display, y, font_company)
@@ -460,7 +352,6 @@ def print_receipt(order, printer_name):
         if order.is_revised and order.last_revised_at:
             y = draw_left_right("Düzeltildi:", format_time(order.last_revised_at), y, font_small_bold)
 
-        # Manuel siparişlerde kişisel bilgileri gösterme
         is_manual = getattr(order, 'is_manual', False)
         if not is_manual:
             if order.contact_name: y = draw_left(order.contact_name, y, font_small)
@@ -473,7 +364,6 @@ def print_receipt(order, printer_name):
                 
         y = draw_dashed(y)
         
-        # Kategorilere ayirma
         CAT_ORDER = ["Çorba", "Çorbalar", "Ana Yemek", "Yan Yemek", "Yan Lezzetler", "İçecek", "İçecekler", "Tatlı", "Tatlılar"]
         def cat_rank(c):
             for i, cat_name in enumerate(CAT_ORDER):
@@ -506,7 +396,6 @@ def print_receipt(order, printer_name):
         if "Ana Yemek" in groups:
             ana_yemek_qty = sum(it.quantity or 1 for it in groups["Ana Yemek"])
             
-        # Draw "TOPLAM: X" on the left, and "Y KİŞİLİK" in the center
         hDC.SelectObject(font_bold)
         left_text = f"TOPLAM: {total_qty}"
         hDC.TextOut(10, y + 4, left_text)
@@ -526,7 +415,6 @@ def print_receipt(order, printer_name):
                 y = draw_left(note_str[:45], y, font_small)
                 note_str = note_str[45:]
                 
-        # Akşam yemeği isteği varsa yazdır
         dinner_text = getattr(order, 'meal_time', None) or ""
         if dinner_text.strip():
             y = draw_dashed(y)
@@ -558,58 +446,32 @@ def print_receipt(order, printer_name):
         print(f"YAZDIRMA HATASI (GDI): {e}")
         return False
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(threadName)s] %(message)s')
-log = logging.getLogger("printer")
-
 # ---------- Ayarlar ----------
-POLL_INTERVAL = 3       # DB kontrol sıklığı (saniye)
-PRINT_DELAY = 2         # Yazdırmalar arası bekleme (saniye) — yazıcı tıkanmasını önler
-MAX_RETRY = 3           # Başarısız yazdırma tekrar deneme sayısı
-RETRY_DELAY = 5         # Tekrar deneme arası bekleme (saniye)
+POLL_INTERVAL = 3       # API kontrol sıklığı (saniye)
+PRINT_DELAY = 2         # Yazdırmalar arası bekleme (saniye)
 
 
-def db_poller(Session, print_queue, stop_event):
-    """DB'yi periyodik olarak kontrol eder, yeni siparişleri kuyruğa ekler."""
+def api_poller(print_queue, stop_event):
+    """API'yi periyodik olarak kontrol eder, yeni siparişleri kuyruğa ekler."""
     seen_ids = set()
     while not stop_event.is_set():
         try:
-            with Session() as session:
-                new_orders = session.execute(
-                    select(Order)
-                    .where(Order.is_printed == False)
-                    .order_by(Order.order_no)
-                ).scalars().all()
+            r = make_request("GET", "/api/admin/printer/pending")
+            pending_jobs = r.json()
 
-                for order in new_orders:
-                    if order.id not in seen_ids:
-                        seen_ids.add(order.id)
-                        # Detached snapshot — session kapandıktan sonra kullanılabilir
-                        snapshot = {
-                            "id": order.id,
-                            "order_no": order.order_no,
-                            "company_name": order.company_name,
-                            "contact_name": order.contact_name,
-                            "phone": order.phone,
-                            "address": order.address,
-                            "note": order.note,
-                            "status": order.status,
-                            "is_revised": order.is_revised,
-                            "revision_count": order.revision_count,
-                            "last_revised_at": order.last_revised_at,
-                            "order_date": order.order_date,
-                            "created_at": order.created_at,
-                            "meal_time": order.meal_time or "",
-                            "is_manual": getattr(order, 'is_manual', False) or False,
-                            "items": [
-                                {"name": i.name, "category": i.category, "quantity": i.quantity}
-                                for i in order.items
-                            ],
-                        }
-                        print_queue.put(snapshot)
-                        log.info(f"Kuyruga eklendi: Siparis #{order.order_no} ({order.company_name})")
+            # Bellek birikmesini önlemek için seen_ids kümesini sadece şu an bekleyenler ile sınırla
+            current_job_ids = {job["id"] for job in pending_jobs}
+            seen_ids = seen_ids.intersection(current_job_ids)
+
+            for job in pending_jobs:
+                job_id = job["id"]
+                if job_id not in seen_ids:
+                    seen_ids.add(job_id)
+                    print_queue.put(job)
+                    log.info(f"Kuyruga eklendi: Is ID: {job_id}, Tip: {job['job_type']}")
 
         except Exception as e:
-            log.error(f"DB polling hatasi: {e}")
+            log.error(f"API polling hatasi: {e}")
 
         stop_event.wait(POLL_INTERVAL)
 
@@ -627,45 +489,51 @@ class _ItemProxy:
         self.__dict__.update(data)
 
 
-def printer_worker(Session, print_queue, stop_event):
-    """Kuyruktan sırayla sipariş alır, tek tek yazdırır."""
+def printer_worker(print_queue, stop_event):
+    """Kuyruktan sırayla iş alır, tek tek yazdırır."""
     while not stop_event.is_set():
         try:
-            snapshot = print_queue.get(timeout=1)
+            job = print_queue.get(timeout=1)
         except queue.Empty:
             continue
 
-        order_no = snapshot["order_no"]
-        order_id = snapshot["id"]
-        proxy = _OrderProxy(snapshot)
+        job_id = job["id"]
+        job_type = job["job_type"]
+        payload = job["payload"]
 
-        log.info(f"Yazdiriliyor: Siparis #{order_no} (kuyrukta kalan: {print_queue.qsize()})")
+        log.info(f"Yazdiriliyor: Is ID: {job_id}, Tip: {job_type} (kuyrukta kalan: {print_queue.qsize()})")
 
         success = False
         while not success and not stop_event.is_set():
-            success = print_receipt(proxy, PRINTER_NAME)
+            try:
+                if job_type == "order":
+                    proxy = _OrderProxy(payload)
+                    success = print_receipt(proxy, PRINTER_NAME)
+                elif job_type == "daily_summary":
+                    success = print_summary_receipt(payload, PRINTER_NAME)
+                elif job_type == "manual_summary":
+                    success = print_manual_summary_receipt(payload, PRINTER_NAME)
+                else:
+                    log.error(f"Bilinmeyen is tipi: {job_type}")
+                    success = True # Bilinmeyen işleri atla ki kuyruk tıkanmasın
+            except Exception as e:
+                log.error(f"Yazdirma islenirken hata olustu: {e}")
+
             if success:
                 break
-            log.warning(f"Siparis #{order_no} yazdirilamadi (Kagit bitmis/hata olabilir). 3 saniye sonra bastan denenecek...")
+
+            log.warning(f"Is {job_id} yazdirilamadi. 3 saniye sonra bastan denenecek...")
             time.sleep(3)
 
         if success:
-            # DB'de is_printed = True olarak güncelle
             try:
-                with Session() as session:
-                    db_order = session.execute(
-                        select(Order).where(Order.id == order_id)
-                    ).scalars().first()
-                    if db_order:
-                        db_order.is_printed = True
-                        session.commit()
-                log.info(f"[OK] Siparis #{order_no} basariyla yazdirildi.")
+                make_request("POST", f"/api/admin/printer/completed/{job_type}/{job_id}")
+                log.info(f"[OK] Is {job_id} ({job_type}) basariyla yazdirildi ve onaylandi.")
             except Exception as e:
-                log.error(f"DB guncelleme hatasi (siparis #{order_no}): {e}")
+                log.error(f"Yazdirma onayi gonderilirken hata (Is ID {job_id}): {e}")
 
         print_queue.task_done()
 
-        # Yazıcıya nefes aldır
         if not print_queue.empty():
             time.sleep(PRINT_DELAY)
 
@@ -674,29 +542,18 @@ def printer_worker(Session, print_queue, stop_event):
 
 def main():
     print("=" * 50)
-    print("  Doyuran Guvec — Yazici Kuyruk Servisi")
+    print("  Doyuran Guvec — API Tabanli Yazici Kuyruk Servisi")
     print(f"  Yazici: {PRINTER_NAME}")
+    print(f"  Backend URL: {BACKEND_URL}")
     print(f"  Kuyruk arasi bekleme: {PRINT_DELAY}s")
-    print(f"  Hata tekrar deneme: {MAX_RETRY}x")
     print("  Kapatmak icin CTRL+C")
     print("=" * 50)
 
-    engine = create_engine(DATABASE_URL)
-
-    @event.listens_for(engine, "connect")
-    def _set_sqlite_pragma(dbapi_connection, connection_record):
-        if DATABASE_URL.startswith("sqlite"):
-            cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.close()
-
-    Session = sessionmaker(bind=engine)
     print_queue = queue.Queue()
     stop_event = threading.Event()
 
-    poller = threading.Thread(target=db_poller, args=(Session, print_queue, stop_event), name="Poller", daemon=True)
-    worker = threading.Thread(target=printer_worker, args=(Session, print_queue, stop_event), name="Printer", daemon=True)
+    poller = threading.Thread(target=api_poller, args=(print_queue, stop_event), name="Poller", daemon=True)
+    worker = threading.Thread(target=printer_worker, args=(print_queue, stop_event), name="Printer", daemon=True)
 
     poller.start()
     worker.start()

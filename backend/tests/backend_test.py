@@ -24,7 +24,8 @@ COMPANY_NAME = f"TEST_Firma_{RUN_ID}"
 
 
 def today_iso():
-    return datetime.now(timezone.utc).date().isoformat()
+    from datetime import timedelta
+    return (datetime.now(timezone.utc) + timedelta(hours=3)).date().isoformat()
 
 
 # ---------- Fixtures ----------
@@ -474,3 +475,86 @@ class TestAnalytics:
         assert isinstance(data["top_items"], list)
         assert isinstance(data["top_companies"], list)
         assert data["range_days"] == 7
+
+
+# ---------- Printer API Tests ----------
+class TestPrinter:
+    def test_printer_api_rbac(self, company_session):
+        # Anonymous users should get 401
+        r = requests.get(f"{API}/admin/printer/pending")
+        assert r.status_code == 401
+
+        r = requests.post(f"{API}/admin/printer/completed/order/123")
+        assert r.status_code == 401
+
+        # Regular companies should get 403 (forbidden)
+        r = company_session.get(f"{API}/admin/printer/pending")
+        assert r.status_code == 403
+
+        r = company_session.post(f"{API}/admin/printer/completed/order/123")
+        assert r.status_code == 403
+
+    def test_order_printed_lifecycle(self, admin_session, company_session, seeded_menu_item):
+        # 1. Place a new order
+        payload = {
+            "items": [{"menu_item_id": seeded_menu_item["id"], "quantity": 3}],
+            "note": "Printer test order",
+        }
+        r = company_session.post(f"{API}/orders", json=payload)
+        assert r.status_code == 200
+        order = r.json()
+        order_id = order["id"]
+
+        # 2. Get pending printer list as admin
+        r = admin_session.get(f"{API}/admin/printer/pending")
+        assert r.status_code == 200
+        pending = r.json()
+        
+        # Verify the order exists in the pending list
+        matching_job = next((job for job in pending if job["id"] == order_id), None)
+        assert matching_job is not None
+        assert matching_job["job_type"] == "order"
+        assert matching_job["payload"]["id"] == order_id
+        assert matching_job["payload"]["note"] == "Printer test order"
+
+        # 3. Mark the print job as completed
+        r = admin_session.post(f"{API}/admin/printer/completed/order/{order_id}")
+        assert r.status_code == 200
+        assert r.json()["status"] == "ok"
+
+        # 4. Verify it's no longer in the pending queue
+        r = admin_session.get(f"{API}/admin/printer/pending")
+        assert r.status_code == 200
+        pending = r.json()
+        matching_job = next((job for job in pending if job["id"] == order_id), None)
+        assert matching_job is None
+
+    def test_summary_print_lifecycle(self, admin_session):
+        # 1. Trigger daily summary print (this should enqueue a PrintJob)
+        r = admin_session.post(f"{API}/admin/daily-summary/print", params={"date": today_iso()})
+        assert r.status_code == 200
+        assert r.json()["status"] == "ok"
+        assert "Yazdırma kuyruğuna eklendi" in r.json()["message"]
+
+        # 2. Get pending printer list and find the daily_summary job
+        r = admin_session.get(f"{API}/admin/printer/pending")
+        assert r.status_code == 200
+        pending = r.json()
+        
+        matching_job = next((job for job in pending if job["job_type"] == "daily_summary"), None)
+        assert matching_job is not None
+        job_id = matching_job["id"]
+        assert "companies" in matching_job["payload"]
+        assert "grand_total" in matching_job["payload"]
+
+        # 3. Mark daily summary completed
+        r = admin_session.post(f"{API}/admin/printer/completed/daily_summary/{job_id}")
+        assert r.status_code == 200
+        assert r.json()["status"] == "ok"
+
+        # 4. Verify it's no longer in the queue
+        r = admin_session.get(f"{API}/admin/printer/pending")
+        assert r.status_code == 200
+        pending = r.json()
+        matching_job = next((job for job in pending if job["id"] == job_id), None)
+        assert matching_job is None

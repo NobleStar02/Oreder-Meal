@@ -16,6 +16,7 @@ import AdminAnalytics from "./pages/admin/AdminAnalytics";
 import AdminCatalog from "./pages/admin/AdminCatalog";
 import AdminManualOrder from "./pages/admin/AdminManualOrder";
 import PrintReceipt from "./pages/PrintReceipt";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth();
@@ -27,6 +28,7 @@ function ProtectedRoute({ children, roles }) {
 
 function App() {
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <CartProvider>
         <BrowserRouter>
@@ -51,6 +53,7 @@ function App() {
         </BrowserRouter>
       </CartProvider>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
