@@ -558,3 +558,65 @@ class TestPrinter:
         pending = r.json()
         matching_job = next((job for job in pending if job["id"] == job_id), None)
         assert matching_job is None
+
+
+# ---------- Manual Order Tests ----------
+class TestManualOrders:
+    def test_manual_order_requires_admin(self, company_session, seeded_menu_item):
+        payload = {
+            "company_name": "Test Manuel Firma",
+            "items": [{"menu_item_id": seeded_menu_item["id"], "quantity": 2}],
+            "note": "Company cannot place manual order"
+        }
+        r = company_session.post(f"{API}/admin/manual-order", json=payload)
+        assert r.status_code == 403
+
+    def test_manual_order_lifecycle_and_sorting(self, admin_session, seeded_menu_item):
+        # Seed another menu item under "Çorba" category (which ranks higher than "Ana Yemek")
+        corba_payload = {
+            "name": f"TEST_Mercimek_{RUN_ID}",
+            "description": "Test corba",
+            "price": 50.00,
+            "category": "Çorba",
+            "available": True,
+            "available_date": today_iso(),
+        }
+        r_corba = admin_session.post(f"{API}/admin/menu", json=corba_payload)
+        assert r_corba.status_code == 200
+        corba_item = r_corba.json()
+
+        try:
+            # Place manual order with items in mixed order (Ana Yemek first, Çorba second)
+            payload = {
+                "company_name": "Manuel Sirket A.S.",
+                "items": [
+                    {"menu_item_id": seeded_menu_item["id"], "quantity": 1},  # Ana Yemek
+                    {"menu_item_id": corba_item["id"], "quantity": 2},        # Çorba
+                ],
+                "note": "Sıralama testi"
+            }
+            r = admin_session.post(f"{API}/admin/manual-order", json=payload)
+            assert r.status_code == 200
+            order = r.json()
+            assert order["company_name"] == "Manuel Sirket A.S."
+            assert order["is_manual"] is True
+            
+            # Verify items are returned sorted by category rank ("Çorba" first, then "Ana Yemek")
+            items = order["items"]
+            assert len(items) == 2
+            assert items[0]["category"] == "Çorba"
+            assert items[1]["category"] == "Ana Yemek"
+
+            # Check listing manual orders
+            r_list = admin_session.get(f"{API}/admin/manual-orders", params={"date": today_iso()})
+            assert r_list.status_code == 200
+            manual_orders = r_list.json()
+            matching = next((o for o in manual_orders if o["id"] == order["id"]), None)
+            assert matching is not None
+            assert matching["items"][0]["category"] == "Çorba"
+            assert matching["items"][1]["category"] == "Ana Yemek"
+
+        finally:
+            # Cleanup corba item
+            admin_session.delete(f"{API}/admin/menu/{corba_item['id']}")
+

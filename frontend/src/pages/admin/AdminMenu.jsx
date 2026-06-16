@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { api, formatApiErrorDetail, todayISO } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -35,12 +35,15 @@ export default function AdminMenu() {
   const [adding, setAdding] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     api.get(`/admin/menu?date=${date}`).then((r) => setItems(r.data)).finally(() => setLoading(false));
     api.get(`/admin/catalog`).then((r) => setCatalog(r.data)).catch(console.error);
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [date]);
+  }, [date]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const openNew = () => { setEditing(null); setForm({ ...empty, available_date: date }); setOpen(true); };
   const openEdit = (it) => {
@@ -135,16 +138,18 @@ export default function AdminMenu() {
     } finally {
       setAdding(false);
     }
-  }, [selected, catalog, date]);
+  }, [selected, catalog, date, load]);
 
   // Menüdeki mevcut yemek isimleri (havuzda gri göstermek için)
-  const existingNames = new Set(items.map(i => i.name));
+  const existingNames = useMemo(() => new Set(items.map(i => i.name)), [items]);
 
-  const filteredCatalog = catalog.filter(item => 
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    item.category.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCatalog = useMemo(() => {
+    return catalog.filter(item => 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      item.category.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [catalog, searchQuery]);
 
   const selectAllVisible = useCallback(() => {
     const visibleIds = filteredCatalog

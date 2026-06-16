@@ -13,6 +13,32 @@ export const api = axios.create({
   withCredentials: true,
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    if (
+      error.response &&
+      error.response.status === 401 &&
+      !originalRequest._retry &&
+      originalRequest.url !== "/auth/login" &&
+      originalRequest.url !== "/auth/refresh"
+    ) {
+      originalRequest._retry = true;
+      try {
+        await api.post("/auth/refresh");
+        return api(originalRequest);
+      } catch (refreshError) {
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+        return Promise.reject(refreshError);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export function formatApiErrorDetail(detail) {
   if (detail == null) return "Bir hata oluştu. Lütfen tekrar deneyin.";
   if (typeof detail === "string") return detail;
@@ -77,9 +103,12 @@ export function groupByCategory(items) {
   return groups;
 }
 
-/** Returns today's date as ISO string (YYYY-MM-DD) */
+/** Returns today's date as ISO string (YYYY-MM-DD) adjusted to Turkey time zone (UTC+3) */
 export function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const turkeyTime = new Date(utc + 3600000 * 3);
+  return turkeyTime.toISOString().slice(0, 10);
 }
 
 /** Shared order status label definitions */

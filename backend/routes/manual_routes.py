@@ -49,15 +49,18 @@ def _format_order(o: Order) -> dict:
         "created_at": o.created_at,
         "meal_time": o.meal_time or "",
         "is_manual": getattr(o, "is_manual", False) or False,
-        "items": [
-            {
-                "menu_item_id": i.menu_item_id,
-                "name": i.name,
-                "category": i.category,
-                "quantity": i.quantity,
-            }
-            for i in o.items
-        ],
+        "items": sorted(
+            [
+                {
+                    "menu_item_id": i.menu_item_id,
+                    "name": i.name,
+                    "category": i.category,
+                    "quantity": i.quantity,
+                }
+                for i in o.items
+            ],
+            key=lambda x: category_rank(x["category"]),
+        ),
     }
 
 
