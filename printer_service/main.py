@@ -13,7 +13,10 @@ except ImportError:
     print("UYARI: pywin32 modulu yuklu degil. Yazdirma yapilamaz.")
     win32print = None
 
-ROOT_DIR = Path(__file__).parent.parent
+PRINTER_DIR = Path(__file__).parent
+load_dotenv(PRINTER_DIR / ".env")
+
+ROOT_DIR = PRINTER_DIR.parent
 BACKEND_DIR = ROOT_DIR / "backend"
 load_dotenv(BACKEND_DIR / ".env")
 
