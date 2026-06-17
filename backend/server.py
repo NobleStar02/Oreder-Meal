@@ -116,10 +116,20 @@ app.include_router(upload_router)
 app.include_router(printer_router)
 
 # CORS — reads ALLOWED_ORIGINS from .env (comma-separated), defaults to ["*"]
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# If ALLOWED_ORIGINS contains "*" or is empty, use allow_origin_regex to allow any origin with credentials.
+if not ALLOWED_ORIGINS or "*" in ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_credentials=True,
+        allow_origin_regex=r"https?://.*",
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_credentials=True,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )

@@ -15,7 +15,10 @@ load_dotenv(ROOT_DIR / ".env")
 # ---------- Database ----------
 _raw_db_url = os.environ.get("DATABASE_URL", "")
 if _raw_db_url.startswith("postgresql"):
-    DATABASE_URL: str = _raw_db_url
+    if _raw_db_url.startswith("postgresql://"):
+        DATABASE_URL = _raw_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    else:
+        DATABASE_URL = _raw_db_url
 else:
     DATABASE_URL = f"sqlite+aiosqlite:///{ROOT_DIR / 'doyuran_guvec.db'}"
 
