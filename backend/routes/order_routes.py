@@ -139,6 +139,7 @@ async def place_order(
         created_at=datetime.now(timezone.utc).isoformat(),
         meal_time=payload.meal_time or "",
         is_manual=False,
+        is_printed=False,
         items=order_items,
     )
 

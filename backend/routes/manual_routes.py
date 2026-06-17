@@ -122,6 +122,7 @@ async def admin_manual_order(
         created_at=datetime.now(timezone.utc).isoformat(),
         meal_time=payload.meal_time or "",
         is_manual=True,
+        is_printed=False,
         items=order_items,
     )
 

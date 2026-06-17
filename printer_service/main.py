@@ -35,6 +35,9 @@ PRINTER_NAME = "POSPrinter POS80"
 session = requests.Session()
 authenticated = False
 
+unconfirmed_lock = threading.Lock()
+unconfirmed_jobs = {}  # {job_id: job_type}
+
 def authenticate():
     global authenticated
     authenticated = False
@@ -473,6 +476,19 @@ def api_poller(print_queue, stop_event):
                     print_queue.put(job)
                     log.info(f"Kuyruga eklendi: Is ID: {job_id}, Tip: {job['job_type']}")
 
+            # Onaylanamamis isleri tekrar dene
+            with unconfirmed_lock:
+                to_retry = list(unconfirmed_jobs.items())
+            
+            for j_id, j_type in to_retry:
+                try:
+                    make_request("POST", f"/api/admin/printer/completed/{j_type}/{j_id}")
+                    log.info(f"[OK] Tekrar deneme: Is {j_id} ({j_type}) onaylandi.")
+                    with unconfirmed_lock:
+                        unconfirmed_jobs.pop(j_id, None)
+                except Exception as e:
+                    log.debug(f"Tekrar deneme onayi basarisiz (Is ID {j_id}): {e}")
+
         except Exception as e:
             log.error(f"API polling hatasi: {e}")
 
@@ -534,6 +550,8 @@ def printer_worker(print_queue, stop_event):
                 log.info(f"[OK] Is {job_id} ({job_type}) basariyla yazdirildi ve onaylandi.")
             except Exception as e:
                 log.error(f"Yazdirma onayi gonderilirken hata (Is ID {job_id}): {e}")
+                with unconfirmed_lock:
+                    unconfirmed_jobs[job_id] = job_type
 
         print_queue.task_done()
 
