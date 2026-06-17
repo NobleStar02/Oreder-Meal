@@ -105,6 +105,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Doyuran Güveç API", lifespan=lifespan)
 
+@app.get("/")
+async def health_check():
+    return {"status": "healthy", "service": "backend-api"}
+
 # Mount route modules
 app.include_router(auth_router)
 app.include_router(menu_router)
