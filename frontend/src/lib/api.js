@@ -30,7 +30,10 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         if (typeof window !== "undefined") {
-          window.location.href = "/login";
+          const path = window.location.pathname;
+          if (path !== "/login" && path !== "/register" && path !== "/") {
+            window.location.href = "/login";
+          }
         }
         return Promise.reject(refreshError);
       }
