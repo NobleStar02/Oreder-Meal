@@ -10,6 +10,16 @@ import { Textarea } from "../components/ui/textarea";
 import { Plus, Minus, ShoppingBag, Utensils, Trash2, Moon } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "../lib/language";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 
 export default function MenuPage() {
   const [items, setItems] = useState([]);
@@ -17,6 +27,11 @@ export default function MenuPage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [note, setNote] = useState("");
   const [placing, setPlacing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [notifPermission, setNotifPermission] = useState(() => {
+    return typeof Notification !== "undefined" ? Notification.permission : "default";
+  });
+
   const cart = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -29,8 +44,49 @@ export default function MenuPage() {
       .finally(() => setLoading(false));
   }, [t]);
 
-  const placeOrder = async () => {
+  // Request notification permissions
+  const requestNotifPermission = async () => {
+    if (typeof Notification === "undefined") return;
+    const res = await Notification.requestPermission();
+    setNotifPermission(res);
+  };
+
+  // Background check for daily menu publishing
+  useEffect(() => {
+    if (typeof Notification === "undefined" || notifPermission !== "granted") return;
+
+    const checkMenu = async () => {
+      try {
+        const r = await api.get("/menu/today");
+        if (r.data && r.data.length > 0) {
+          const today = new Date().toDateString();
+          const lastNotified = localStorage.getItem("notified-menu-date");
+          if (lastNotified !== today) {
+            new Notification(t("notification_title"), {
+              body: t("notification_body"),
+              icon: "/favicon.ico",
+            });
+            localStorage.setItem("notified-menu-date", today);
+          }
+        }
+      } catch (err) {
+        console.error("Menu notification check error", err);
+      }
+    };
+
+    const interval = setInterval(checkMenu, 60000);
+    checkMenu(); // Run immediately on mount
+
+    return () => clearInterval(interval);
+  }, [notifPermission, t]);
+
+  const triggerPlaceOrder = () => {
     if (!cart.items.length) return;
+    setConfirmOpen(true);
+  };
+
+  const submitOrder = async () => {
+    setConfirmOpen(false);
     setPlacing(true);
     try {
       const res = await api.post("/orders", {
@@ -61,7 +117,7 @@ export default function MenuPage() {
 
       <section className="max-w-7xl mx-auto px-5 md:px-8 pt-10 pb-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
+          <div className="w-full">
             <div className="text-xs uppercase tracking-[0.25em] font-bold text-[#C05A46] mb-2">
               {formattedDate}
             </div>
@@ -70,6 +126,16 @@ export default function MenuPage() {
               {user?.company_name && <>{t("menu_welcome", { firm: user.company_name })} </>}
               {t("menu_desc")}
             </p>
+
+            {/* Notification Permission Prompt Banner */}
+            {notifPermission === "default" && (
+              <div className="bg-[#C05A46]/10 border border-[#C05A46]/30 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 mt-6">
+                <div className="text-sm text-[#2C2A29] font-medium">{t("notification_prompt")}</div>
+                <Button onClick={requestNotifPermission} className="bg-[#C05A46] hover:bg-[#A64A38] text-white rounded-full text-xs h-9 px-4">
+                  {t("notification_enable_btn")}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -182,6 +248,23 @@ export default function MenuPage() {
               <div className="mt-5">
                 <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#8A8580]">{t("cart_note_label")}</label>
                 <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("cart_note_placeholder")} className="mt-2 rounded-lg border-[#E5DFD3] bg-white" data-testid="cart-note-input" />
+                
+                {/* Predefined Note presets */}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {[1, 2, 3, 4].map((num) => {
+                    const text = t(`note_preset_${num}`);
+                    return (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setNote((prev) => (prev ? `${prev}, ${text}` : text))}
+                        className="text-[10px] bg-white hover:bg-[#F2EBE3] text-[#5C5855] border border-[#E5DFD3] rounded-full px-2.5 py-1 transition-all"
+                      >
+                        {text}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -192,7 +275,7 @@ export default function MenuPage() {
               <span className="font-heading text-2xl font-bold" data-testid="cart-total-count">{cart.count}</span>
             </div>
             <Button
-              onClick={placeOrder}
+              onClick={triggerPlaceOrder}
               disabled={cart.items.length === 0 || placing}
               className="w-full h-12 bg-[#C05A46] hover:bg-[#A64A38] text-white rounded-full font-semibold"
               data-testid="cart-place-order-button"
@@ -213,6 +296,26 @@ export default function MenuPage() {
           <ShoppingBag size={18} /> {t("cart_mobile_count", { count: cart.count })}
         </button>
       )}
+
+      {/* Place Order Confirmation AlertDialog */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent className="bg-white rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading text-xl">{t("confirm_title")}</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#5C5855] text-sm">
+              {t("confirm_desc")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-full border-[#E5DFD3]" onClick={() => setConfirmOpen(false)}>
+              {t("confirm_cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction className="bg-[#C05A46] hover:bg-[#A64A38] text-white rounded-full" onClick={submitOrder}>
+              {t("confirm_action")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
