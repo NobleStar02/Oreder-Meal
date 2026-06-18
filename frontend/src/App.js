@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { CartProvider } from "./lib/cart";
+import { LanguageProvider } from "./lib/language";
 
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -30,28 +31,30 @@ function App() {
   return (
     <ErrorBoundary>
     <AuthProvider>
-      <CartProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/menu" element={<ProtectedRoute roles={["company", "admin"]}><MenuPage /></ProtectedRoute>} />
-            <Route path="/orders" element={<ProtectedRoute roles={["company", "admin"]}><OrdersPage /></ProtectedRoute>} />
-            <Route path="/print/:orderId" element={<ProtectedRoute roles={["admin", "company"]}><PrintReceipt /></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute roles={["admin"]}><AdminLayout /></ProtectedRoute>}>
-              <Route index element={<AdminDashboard />} />
-              <Route path="menu" element={<AdminMenu />} />
-              <Route path="catalog" element={<AdminCatalog />} />
-              <Route path="orders" element={<AdminOrders />} />
-              <Route path="manual-order" element={<AdminManualOrder />} />
-              <Route path="analytics" element={<AdminAnalytics />} />
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-          <Toaster position="top-right" richColors offset="64px" />
-        </BrowserRouter>
-      </CartProvider>
+      <LanguageProvider>
+        <CartProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/menu" element={<ProtectedRoute roles={["company", "admin"]}><MenuPage /></ProtectedRoute>} />
+              <Route path="/orders" element={<ProtectedRoute roles={["company", "admin"]}><OrdersPage /></ProtectedRoute>} />
+              <Route path="/print/:orderId" element={<ProtectedRoute roles={["admin", "company"]}><PrintReceipt /></ProtectedRoute>} />
+              <Route path="/admin" element={<ProtectedRoute roles={["admin"]}><AdminLayout /></ProtectedRoute>}>
+                <Route index element={<AdminDashboard />} />
+                <Route path="menu" element={<AdminMenu />} />
+                <Route path="catalog" element={<AdminCatalog />} />
+                <Route path="orders" element={<AdminOrders />} />
+                <Route path="manual-order" element={<AdminManualOrder />} />
+                <Route path="analytics" element={<AdminAnalytics />} />
+              </Route>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+            <Toaster position="top-right" richColors offset="64px" />
+          </BrowserRouter>
+        </CartProvider>
+      </LanguageProvider>
     </AuthProvider>
     </ErrorBoundary>
   );

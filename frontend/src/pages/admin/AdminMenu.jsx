@@ -144,11 +144,17 @@ export default function AdminMenu() {
   const existingNames = useMemo(() => new Set(items.map(i => i.name)), [items]);
 
   const filteredCatalog = useMemo(() => {
-    return catalog.filter(item => 
+    const filtered = catalog.filter(item => 
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
       item.category.toLowerCase().includes(searchQuery.toLowerCase())
     );
+    return [...filtered].sort((a, b) => {
+      const ra = CATEGORIES.indexOf(a.category);
+      const rb = CATEGORIES.indexOf(b.category);
+      if (ra !== rb) return ra - rb;
+      return a.name.localeCompare(b.name, "tr");
+    });
   }, [catalog, searchQuery]);
 
   const selectAllVisible = useCallback(() => {

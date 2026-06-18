@@ -28,11 +28,21 @@ async def admin_get_catalog(
     user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    res = await db.execute(select(DishCatalog).order_by(DishCatalog.name))
+    res = await db.execute(select(DishCatalog))
     items = res.scalars().all()
+    
+    category_order = {"Çorba": 0, "Ana Yemek": 1, "Yan Yemek": 2, "İçecek": 3, "Tatlı": 4}
+    sorted_items = sorted(
+        items,
+        key=lambda x: (
+            category_order.get(x.category, 99),
+            (x.name or "").lower()
+        )
+    )
+    
     return [
         {"id": i.id, "name": i.name, "description": i.description, "category": i.category}
-        for i in items
+        for i in sorted_items
     ]
 
 

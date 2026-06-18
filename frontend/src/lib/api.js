@@ -89,7 +89,7 @@ export function sortByCategory(arr) {
     const ra = categoryRank(a.category);
     const rb = categoryRank(b.category);
     if (ra !== rb) return ra - rb;
-    return (a.created_at || "").localeCompare(b.created_at || "");
+    return (a.name || "").localeCompare(b.name || "", "tr");
   });
 }
 

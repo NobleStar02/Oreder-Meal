@@ -81,7 +81,14 @@ export default function AdminCatalog() {
     }
   };
 
-  const filtered = items.filter(it => filterCat === "all" || it.category === filterCat);
+  const filtered = items
+    .filter(it => filterCat === "all" || it.category === filterCat)
+    .sort((a, b) => {
+      const ra = CATEGORIES.indexOf(a.category);
+      const rb = CATEGORIES.indexOf(b.category);
+      if (ra !== rb) return ra - rb;
+      return a.name.localeCompare(b.name, "tr");
+    });
 
   return (
     <div>
