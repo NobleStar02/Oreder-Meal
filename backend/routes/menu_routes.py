@@ -233,7 +233,7 @@ async def admin_system_reset(
             orders_res = await db.execute(
                 select(Order).where(Order.order_date == today)
             )
-            orders = orders_res.scalars().all()
+            orders = orders_res.scalars().unique().all()
             for o in orders:
                 await db.delete(o)
                 
@@ -254,7 +254,7 @@ async def admin_system_reset(
         elif mode == "all":
             # 1. Tüm siparişleri sil
             orders_res = await db.execute(select(Order))
-            orders = orders_res.scalars().all()
+            orders = orders_res.scalars().unique().all()
             for o in orders:
                 await db.delete(o)
                 

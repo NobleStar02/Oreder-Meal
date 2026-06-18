@@ -53,7 +53,15 @@ export default function MenuPage() {
 
   // Background check for daily menu publishing and updates
   useEffect(() => {
-    if (typeof Notification === "undefined" || notifPermission !== "granted") return;
+    console.log("Notification system initialized. Permission status:", notifPermission);
+    if (typeof Notification === "undefined") {
+      console.warn("Web Notification API is not supported in this browser or environment (e.g. non-HTTPS).");
+      return;
+    }
+    if (notifPermission !== "granted") {
+      console.info("Notification permission is not granted. Please allow notifications to receive menu updates.");
+      return;
+    }
 
     const checkMenu = async () => {
       try {
@@ -64,15 +72,19 @@ export default function MenuPage() {
           const today = new Date().toDateString();
           const lastNotifiedDate = localStorage.getItem("notified-menu-date");
 
+          console.log("Checking menu fingerprint. Current:", fingerprint, "Last notified:", lastFingerprint);
+
           if (fingerprint !== lastFingerprint) {
             // If the day changed or it's the very first notification, show "published"
             if (lastNotifiedDate !== today || !lastFingerprint) {
+              console.log("Sending menu published notification...");
               new Notification(t("notification_title"), {
                 body: t("notification_body"),
                 icon: "/favicon.ico",
               });
             } else {
               // Otherwise, it's an update to today's menu
+              console.log("Sending menu updated notification...");
               new Notification(t("notification_updated_title"), {
                 body: t("notification_updated_body"),
                 icon: "/favicon.ico",
