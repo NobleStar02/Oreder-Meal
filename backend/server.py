@@ -92,6 +92,14 @@ async def lifespan(app: FastAPI):
             existing.password_hash = hash_password(ADMIN_PASSWORD)
             await session.commit()
             logger.info("Admin password updated.")
+        # Delete old default admin if the email has changed
+        if ADMIN_EMAIL.lower() != "admin@test.com":
+            try:
+                await session.execute(sa_text("DELETE FROM users WHERE email = 'admin@test.com'"))
+                await session.commit()
+                logger.info("Old default admin user 'admin@test.com' deleted from DB.")
+            except Exception as e:
+                logger.error(f"Failed to delete old admin: {e}")
 
     yield
 
