@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import { Button } from "../components/ui/button";
-import { ArrowRight, Clock, Printer, BarChart3, ShieldCheck } from "lucide-react";
+import { ArrowRight, Clock, BarChart3, ShieldCheck } from "lucide-react";
 import { useAuth } from "../lib/auth";
 
 export default function Landing() {
@@ -41,7 +41,6 @@ export default function Landing() {
             </div>
             <div className="mt-10 flex flex-wrap gap-x-8 gap-y-3 text-sm text-[#5C5855]">
               <div className="flex items-center gap-2"><Clock size={16} className="text-[#C05A46]" /> Akşam yemeği seçeneği</div>
-              <div className="flex items-center gap-2"><Printer size={16} className="text-[#C05A46]" /> Otomatik termal yazıcı</div>
               <div className="flex items-center gap-2"><ShieldCheck size={16} className="text-[#C05A46]" /> Firma bazlı geçmiş</div>
             </div>
           </div>
