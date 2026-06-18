@@ -51,7 +51,7 @@ export default function MenuPage() {
     setNotifPermission(res);
   };
 
-  // Background check for daily menu publishing
+  // Background check for daily menu publishing and updates
   useEffect(() => {
     if (typeof Notification === "undefined" || notifPermission !== "granted") return;
 
@@ -59,13 +59,26 @@ export default function MenuPage() {
       try {
         const r = await api.get("/menu/today");
         if (r.data && r.data.length > 0) {
+          const fingerprint = r.data.map((i) => `${i.id}-${i.name}`).sort().join("|");
+          const lastFingerprint = localStorage.getItem("notified-menu-fingerprint");
           const today = new Date().toDateString();
-          const lastNotified = localStorage.getItem("notified-menu-date");
-          if (lastNotified !== today) {
-            new Notification(t("notification_title"), {
-              body: t("notification_body"),
-              icon: "/favicon.ico",
-            });
+          const lastNotifiedDate = localStorage.getItem("notified-menu-date");
+
+          if (fingerprint !== lastFingerprint) {
+            // If the day changed or it's the very first notification, show "published"
+            if (lastNotifiedDate !== today || !lastFingerprint) {
+              new Notification(t("notification_title"), {
+                body: t("notification_body"),
+                icon: "/favicon.ico",
+              });
+            } else {
+              // Otherwise, it's an update to today's menu
+              new Notification(t("notification_updated_title"), {
+                body: t("notification_updated_body"),
+                icon: "/favicon.ico",
+              });
+            }
+            localStorage.setItem("notified-menu-fingerprint", fingerprint);
             localStorage.setItem("notified-menu-date", today);
           }
         }

@@ -472,14 +472,17 @@ export default function AdminMenu() {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent className="bg-white rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle className="font-heading text-xl">Emin misiniz?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#5C5855]">
-              <strong className="text-[#2C2A29]">"{deleteTarget?.name}"</strong> menüden silinecek. Bu işlem geri alınamaz.
+            <AlertDialogTitle className="font-heading text-xl">Menüden Kaldırılsın mı?</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#5C5855] text-sm">
+              <strong className="text-[#2C2A29]">"{deleteTarget?.name}"</strong> yemeği bugünün menüsünden kaldırılacaktır. 
+              <span className="block mt-2 font-medium text-[#C05A46]">
+                Not: Bu işlem yemeği yemek havuzu kataloğundan silmez, sadece bugünkü menüden çıkarır.
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-full border-[#E5DFD3]" onClick={() => { setShowDeleteDialog(false); setDeleteTarget(null); }}>İptal</AlertDialogCancel>
-            <AlertDialogAction className="bg-[#B93A32] hover:bg-[#9C302A] text-white rounded-full" onClick={remove}>Sil</AlertDialogAction>
+            <AlertDialogAction className="bg-[#B93A32] hover:bg-[#9C302A] text-white rounded-full" onClick={remove}>Menüden Kaldır</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

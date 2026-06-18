@@ -14,14 +14,14 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import require_admin
 from config import category_rank, today_iso
 from database import get_db
-from models import MenuItem
+from models import MenuItem, Order
 from schemas import MenuItemIn, MenuItemUpdate
 
 router = APIRouter(prefix="/api")
@@ -213,3 +213,67 @@ async def admin_delete_menu(
     await db.delete(item)
     await db.commit()
     return {"ok": True}
+
+
+# ---------- Admin: system reset ----------
+@router.post("/admin/system/reset")
+async def admin_system_reset(
+    mode: str = Query(..., description="'today' veya 'all'"),
+    user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    if mode not in ["today", "all"]:
+        raise HTTPException(status_code=400, detail="Geçersiz mod. 'today' veya 'all' olmalı.")
+    
+    try:
+        if mode == "today":
+            today = today_iso()
+            
+            # 1. Bugünün siparişlerini sil (cascade delete order items otomatik silinecektir)
+            orders_res = await db.execute(
+                select(Order).where(Order.order_date == today)
+            )
+            orders = orders_res.scalars().all()
+            for o in orders:
+                await db.delete(o)
+                
+            # 2. Bugünün menü öğelerini sil
+            menu_res = await db.execute(
+                select(MenuItem).where(MenuItem.available_date == today)
+            )
+            menu_items = menu_res.scalars().all()
+            for m in menu_items:
+                await db.delete(m)
+                
+            await db.commit()
+            return {
+                "ok": True,
+                "message": f"Bugünkü menü ve siparişler sıfırlandı. Silinen sipariş: {len(orders)}, Silinen yemek: {len(menu_items)}"
+            }
+            
+        elif mode == "all":
+            # 1. Tüm siparişleri sil
+            orders_res = await db.execute(select(Order))
+            orders = orders_res.scalars().all()
+            for o in orders:
+                await db.delete(o)
+                
+            # 2. Tüm menü öğelerini sil
+            menu_res = await db.execute(select(MenuItem))
+            menu_items = menu_res.scalars().all()
+            for m in menu_items:
+                await db.delete(m)
+                
+            await db.commit()
+            return {
+                "ok": True,
+                "message": f"Tüm menü ve sipariş geçmişi sıfırlandı. Silinen sipariş: {len(orders)}, Silinen yemek: {len(menu_items)}"
+            }
+            
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Sıfırlama işlemi başarısız oldu: {str(e)}"
+        )
+
