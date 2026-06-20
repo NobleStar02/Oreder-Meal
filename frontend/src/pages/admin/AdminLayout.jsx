@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
-import { ChefHat, LayoutDashboard, Utensils, ListOrdered, BarChart3, LogOut, ExternalLink, Library, PenLine } from "lucide-react";
+import { ChefHat, LayoutDashboard, Utensils, ListOrdered, BarChart3, LogOut, ExternalLink, Library, PenLine, Building } from "lucide-react";
 import { Button } from "../../components/ui/button";
 
 const linkBase = "flex items-center gap-3 px-4 py-2.5 rounded-full text-sm font-medium transition-colors";
@@ -39,6 +39,9 @@ export default function AdminLayout() {
           </NavLink>
           <NavLink to="/admin/analytics" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`} data-testid="admin-nav-analytics">
             <BarChart3 size={16} /> Analitik
+          </NavLink>
+          <NavLink to="/admin/companies" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkInactive}`}>
+            <Building size={16} /> Firmalar
           </NavLink>
         </nav>
 

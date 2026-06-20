@@ -4,6 +4,7 @@ import { api, formatTimeTR } from "../../lib/api";
 import { ArrowUpRight, Utensils, ListOrdered, Package, CalendarDays, Trash2, Loader2 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../../components/ui/dialog";
+import { Switch } from "../../components/ui/switch";
 import { toast } from "sonner";
 
 export default function AdminDashboard() {
@@ -13,6 +14,8 @@ export default function AdminDashboard() {
   const [resetMode, setResetMode] = useState("today"); // "today" | "all"
   const [confirmCheckbox, setConfirmCheckbox] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [maintenance, setMaintenance] = useState(false);
+  const [togglingMaintenance, setTogglingMaintenance] = useState(false);
 
   const handleReset = async () => {
     if (!confirmCheckbox) return;
@@ -32,6 +35,23 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleMaintenanceToggle = async (checked) => {
+    setTogglingMaintenance(true);
+    try {
+      const res = await api.post(`/admin/system/maintenance?active=${checked}`);
+      setMaintenance(res.data.maintenance_mode);
+      if (checked) {
+        toast.warning("Sistem bakım modu aktif edildi! Admin dışındaki tüm kullanıcılar engellendi.");
+      } else {
+        toast.success("Sistem bakım modu pasif edildi! Tüm kullanıcılar sisteme erişebilir.");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.message || "Bakım modu güncellenirken hata oluştu");
+    } finally {
+      setTogglingMaintenance(false);
+    }
+  };
+
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
     api.get("/admin/analytics/summary?days=7")
@@ -40,6 +60,9 @@ export default function AdminDashboard() {
     api.get(`/admin/orders?date=${today}`)
       .then((r) => setTodayOrders(r.data))
       .catch(() => setTodayOrders([]));
+    api.get("/system/maintenance")
+      .then((r) => setMaintenance(r.data.maintenance_mode))
+      .catch(() => setMaintenance(false));
   }, []);
 
   const newCount = todayOrders.filter(o => o.status === "yeni").length;
@@ -68,6 +91,29 @@ export default function AdminDashboard() {
         <Stat label="Yeni / Bekleyen" value={newCount} icon={<Package size={18} />} accent />
         <Stat label="Bugün Toplam Adet" value={totalDishesToday} icon={<Utensils size={18} />} />
         <Stat label="7 Günlük Sipariş" value={summary?.total_orders ?? "—"} icon={<CalendarDays size={18} />} />
+      </div>
+
+      {/* ===== Bakım Modu Yönetimi ===== */}
+      <div className="bg-white rounded-2xl border border-[#E5DFD3] p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${maintenance ? "bg-[#B93A32] animate-pulse" : "bg-[#4A5D23]"}`}></span>
+            <h2 className="font-heading text-lg font-bold text-[#2C2A29]">Sistem Bakım Modu</h2>
+          </div>
+          <p className="text-sm text-[#5C5855] max-w-xl">
+            Bakım modunu açtığınızda, admin dışındaki tüm firma kullanıcıları bakım ekranına yönlendirilir ve yeni sipariş vermeleri engellenir. Adminler sisteme erişmeye devam edebilir.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 bg-[#F9F6F0] px-4 py-2.5 rounded-2xl border border-[#E5DFD3] shrink-0">
+          <span className={`text-xs font-bold uppercase tracking-wider ${maintenance ? "text-[#B93A32]" : "text-[#8A8580]"}`}>
+            {maintenance ? "Aktif (Sistem Kapalı)" : "Pasif (Sistem Açık)"}
+          </span>
+          <Switch 
+            checked={maintenance} 
+            onCheckedChange={handleMaintenanceToggle} 
+            disabled={togglingMaintenance}
+          />
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">

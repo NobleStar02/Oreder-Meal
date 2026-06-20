@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth import require_admin
 from config import category_rank, today_iso
 from database import get_db
-from models import MenuItem, Order
+from models import MenuItem, Order, SystemSetting
 from schemas import MenuItemIn, MenuItemUpdate
 
 router = APIRouter(prefix="/api")
@@ -30,6 +30,15 @@ router = APIRouter(prefix="/api")
 # ---------- Public ----------
 @router.get("/menu/today")
 async def menu_today(db: AsyncSession = Depends(get_db)):
+    # Check maintenance mode
+    m_res = await db.execute(select(SystemSetting).where(SystemSetting.key == "maintenance_mode"))
+    m_setting = m_res.scalars().first()
+    if m_setting and m_setting.value == "true":
+        raise HTTPException(
+            status_code=503,
+            detail="Sistem şu anda bakımdadır. Lütfen daha sonra tekrar deneyiniz."
+        )
+
     today = today_iso()
     res = await db.execute(
         select(MenuItem).where(MenuItem.available == True, MenuItem.available_date == today)

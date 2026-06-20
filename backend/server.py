@@ -24,7 +24,7 @@ from config import (
 )
 from database import AsyncSessionLocal, Base, engine
 from models import User  # noqa: F401 — ensure models are registered on Base
-from models import MenuItem, DishCatalog, Order, OrderItem, PrintJob  # noqa: F401
+from models import MenuItem, DishCatalog, Order, OrderItem, PrintJob, SystemSetting  # noqa: F401
 from auth import hash_password, verify_password
 
 # Route modules
@@ -100,6 +100,18 @@ async def lifespan(app: FastAPI):
                 logger.info("Old default admin user 'admin@test.com' deleted from DB.")
             except Exception as e:
                 logger.error(f"Failed to delete old admin: {e}")
+
+        # Seed system settings (maintenance_mode)
+        try:
+            res_settings = await session.execute(select(SystemSetting).where(SystemSetting.key == "maintenance_mode"))
+            existing_setting = res_settings.scalars().first()
+            if not existing_setting:
+                setting = SystemSetting(key="maintenance_mode", value="false")
+                session.add(setting)
+                await session.commit()
+                logger.info("Default system setting 'maintenance_mode' seeded as 'false'.")
+        except Exception as e:
+            logger.error(f"Failed to seed system settings: {e}")
 
     yield
 

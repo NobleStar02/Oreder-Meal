@@ -25,11 +25,12 @@ from auth import (
     login_limiter,
     set_auth_cookies,
     verify_password,
+    require_admin,
 )
-from config import JWT_ALGORITHM, JWT_SECRET
+from config import JWT_ALGORITHM, JWT_SECRET, ADMIN_EMAIL
 from database import get_db
-from models import User
-from schemas import LoginIn, RegisterIn
+from models import User, SystemSetting
+from schemas import LoginIn, RegisterIn, CompanyUpdate
 
 router = APIRouter(prefix="/api")
 
@@ -85,6 +86,16 @@ async def login(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
+    # Check maintenance mode for non-admin logins
+    if payload.email.lower() != ADMIN_EMAIL.lower():
+        m_res = await db.execute(select(SystemSetting).where(SystemSetting.key == "maintenance_mode"))
+        m_setting = m_res.scalars().first()
+        if m_setting and m_setting.value == "true":
+            raise HTTPException(
+                status_code=503,
+                detail="Sistem şu anda bakımdadır. Lütfen daha sonra tekrar deneyiniz."
+            )
+
     client_ip = request.client.host if request.client else "unknown"
     if not login_limiter.check(client_ip):
         raise HTTPException(
@@ -166,3 +177,96 @@ async def refresh_tokens(
         "phone": user.phone,
         "address": user.address,
     }
+
+
+# ---------- Public: system maintenance status ----------
+@router.get("/system/maintenance")
+async def get_system_maintenance(db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(SystemSetting).where(SystemSetting.key == "maintenance_mode"))
+    setting = res.scalars().first()
+    return {"maintenance_mode": (setting.value == "true") if setting else False}
+
+
+# ---------- Admin: system maintenance update ----------
+@router.post("/admin/system/maintenance")
+async def update_system_maintenance(
+    active: bool,
+    user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(SystemSetting).where(SystemSetting.key == "maintenance_mode"))
+    setting = res.scalars().first()
+    if not setting:
+        setting = SystemSetting(key="maintenance_mode", value="false")
+        db.add(setting)
+    
+    setting.value = "true" if active else "false"
+    await db.commit()
+    return {"ok": True, "maintenance_mode": active}
+
+
+# ---------- Admin: list companies (emails and details) ----------
+@router.get("/admin/companies")
+async def admin_list_companies(
+    user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(User).where(User.role == "company").order_by(User.company_name))
+    companies = res.scalars().all()
+    return [
+        {
+            "id": c.id,
+            "email": c.email,  # keeping email since admin needs to contact/identify, password is excluded
+            "company_name": c.company_name,
+            "contact_name": c.contact_name,
+            "phone": c.phone,
+            "address": c.address,
+            "created_at": c.created_at,
+        }
+        for c in companies
+    ]
+
+
+# ---------- Admin: update company details ----------
+@router.put("/admin/companies/{company_id}")
+async def admin_update_company(
+    company_id: str,
+    payload: CompanyUpdate,
+    user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(User).where(User.id == company_id, User.role == "company"))
+    company = res.scalars().first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Firma bulunamadı")
+
+    for k, v in payload.model_dump().items():
+        if v is not None:
+            setattr(company, k, v)
+
+    await db.commit()
+    return {
+        "id": company.id,
+        "email": company.email,
+        "company_name": company.company_name,
+        "contact_name": company.contact_name,
+        "phone": company.phone,
+        "address": company.address,
+    }
+
+
+# ---------- Admin: delete company ----------
+@router.delete("/admin/companies/{company_id}")
+async def admin_delete_company(
+    company_id: str,
+    user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(User).where(User.id == company_id, User.role == "company"))
+    company = res.scalars().first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Firma bulunamadı")
+
+    await db.delete(company)
+    await db.commit()
+    return {"ok": True}

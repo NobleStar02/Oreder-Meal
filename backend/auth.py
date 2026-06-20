@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import JWT_SECRET, JWT_ALGORITHM, COOKIE_SECURE
 from database import get_db
-from models import User
+from models import User, SystemSetting
 
 
 # ============================================================
@@ -97,6 +97,16 @@ async def get_current_user(
         user = result.scalars().first()
         if not user:
             raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı")
+
+        # Check maintenance mode for non-admin users
+        if user.role != "admin":
+            m_res = await db.execute(select(SystemSetting).where(SystemSetting.key == "maintenance_mode"))
+            m_setting = m_res.scalars().first()
+            if m_setting and m_setting.value == "true":
+                raise HTTPException(
+                    status_code=503,
+                    detail="Sistem şu anda bakımdadır. Lütfen daha sonra tekrar deneyiniz."
+                )
 
         return {
             "id": user.id,

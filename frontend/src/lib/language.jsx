@@ -144,6 +144,8 @@ const TRANSLATIONS = {
     edit_saving: "Kaydediliyor…",
     edit_dinner_question: "Akşama hangi yemekleri istiyorsunuz?",
     edit_dinner_qty_btn: "Akşam Adet",
+    maintenance_title: "Bakım Çalışması",
+    maintenance_desc: "Sistemimizde eklemeler ve güncellemeler yapılıyor. Sipariş sistemimiz kısa bir süreliğine kapalıdır. Anlayışınız için teşekkür ederiz.",
   },
   az: {
     // Nav Bar
@@ -288,6 +290,8 @@ const TRANSLATIONS = {
     edit_saving: "Qeyd edilir…",
     edit_dinner_question: "Axşam üçün hansı yeməkləri istəyirsiniz?",
     edit_dinner_qty_btn: "Axşam Sayı",
+    maintenance_title: "Texniki İşlər",
+    maintenance_desc: "Sistemimizdə əlavələr və yeniləmələr aparılır. Sifariş sistemimiz qısa müddətə bağlıdır. Anlayışınız üçün təşəkkür edirik.",
   },
   ar: {
     // Nav Bar
@@ -432,6 +436,8 @@ const TRANSLATIONS = {
     edit_saving: "جاري الحفظ…",
     edit_dinner_question: "ما هي الأطباق التي تريدها لوجبة العشاء؟",
     edit_dinner_qty_btn: "كمية العشاء",
+    maintenance_title: "أعمال الصيانة",
+    maintenance_desc: "يتم إجراء إضافات وتحديثات على نظامنا. نظام الطلبات مغلق لفترة قصيرة. نشكركم على تفهمكم.",
   }
 };
 

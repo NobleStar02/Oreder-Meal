@@ -70,3 +70,10 @@ class ManualOrderIn(BaseModel):
     items: List[OrderItemIn]
     note: Optional[str] = ""
     meal_time: Optional[str] = ""
+
+
+class CompanyUpdate(BaseModel):
+    company_name: Optional[str] = None
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
